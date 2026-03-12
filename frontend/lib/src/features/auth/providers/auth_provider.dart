@@ -335,6 +335,13 @@ class AuthProvider extends ChangeNotifier {
       authGroupId: s.grpid1,
     );
 
+    // Save the original grpid1 as orgGroupId — this never gets overwritten
+    debugPrint('DEBUG LOGIN: grpid0=${s.grpid0}, grpid1=${s.grpid1}');
+    if (s.grpid1 != null && s.grpid1!.isNotEmpty) {
+      await LocalStorage.instance.setOrgGroupId(s.grpid1!);
+      debugPrint('DEBUG LOGIN: saved orgGroupId=${s.grpid1}');
+    }
+
     // Save session mobile number and login type for session expiry check
     // Android: PreferenceManager stores MOBILE_NUMBER and LOGIN_TYPE at login
     if (_mobileNumber != null && _mobileNumber!.isNotEmpty) {

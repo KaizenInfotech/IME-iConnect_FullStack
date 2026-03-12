@@ -1,10 +1,15 @@
+import 'dart:io' show Platform;
+
 /// API constants matching iOS APIConstant.swift exactly.
 /// All endpoint paths are case-sensitive and match the iOS project.
 class ApiConstants {
   ApiConstants._();
 
   // ─── BASE URL ───────────────────────────────────────────
-  static const String baseUrl = 'http://localhost:5050/api/';
+  // Android emulator uses 10.0.2.2 to reach the host machine's localhost
+  static final String baseUrl = Platform.isAndroid
+      ? 'http://10.0.2.2:5050/api/'
+      : 'http://localhost:5050/api/';
 
   // ─── STATIC WEB PAGES ──────────────────────────────────
   static const String termsAndConditionsUrl =

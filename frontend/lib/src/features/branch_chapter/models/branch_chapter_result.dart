@@ -184,8 +184,8 @@ class BranchItem {
 
   factory BranchItem.fromJson(Map<String, dynamic> json) {
     return BranchItem(
-      groupId: json['GroupId'] as int?,
-      groupName: json['group_name']?.toString(),
+      groupId: int.tryParse(json['GroupId']?.toString() ?? ''),
+      groupName: (json['group_name'] ?? json['ClubName'])?.toString(),
       address: json['address']?.toString(),
     );
   }
@@ -223,13 +223,13 @@ class BranchMemberItem {
 
   factory BranchMemberItem.fromJson(Map<String, dynamic> json) {
     return BranchMemberItem(
-      groupId: json['GroupId'] as int?,
+      groupId: int.tryParse(json['GroupId']?.toString() ?? ''),
       memberName: json['member_name']?.toString(),
       designation: json['Designation']?.toString(),
       mobileNo: json['mobile_no']?.toString(),
       emailId: json['email_id']?.toString(),
-      hideNum: json['hide_num'] as int?,
-      hideMail: json['hide_mail'] as int?,
+      hideNum: int.tryParse(json['hide_num']?.toString() ?? ''),
+      hideMail: int.tryParse(json['hide_mail']?.toString() ?? ''),
       designation0: json['Designation0']?.toString(),
       memberName0: json['member_name0']?.toString(),
       mobileNo0: json['mobile_no0']?.toString(),

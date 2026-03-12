@@ -131,3 +131,4 @@
 /Users/ios2/Documents/Mani_mac_folder/ime(i)_newVersion_AI/backend/TouchBase.API/obj/Debug/net10.0/TouchBase.API.pdb
 /Users/ios2/Documents/Mani_mac_folder/ime(i)_newVersion_AI/backend/TouchBase.API/obj/Debug/net10.0/TouchBase.API.genruntimeconfig.cache
 /Users/ios2/Documents/Mani_mac_folder/ime(i)_newVersion_AI/backend/TouchBase.API/obj/Debug/net10.0/ref/TouchBase.API.dll
+/Users/ios2/Documents/Mani_mac_folder/ime(i)_newVersion_AI/backend/TouchBase.API/obj/Debug/net10.0/TouchBase.API.sourcelink.json

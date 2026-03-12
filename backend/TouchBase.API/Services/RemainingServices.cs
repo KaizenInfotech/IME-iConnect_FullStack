@@ -27,7 +27,7 @@ namespace TouchBase.API.Services;
 
 // ═══════════════════════════════════════════════════════════════
 // DashboardService
-// ═══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════���
 public class DashboardService : IDashboardService
 {
     private readonly AppDbContext _db;
@@ -77,7 +77,19 @@ public class DashboardService : IDashboardService
 public class GroupService : IGroupService
 {
     private readonly AppDbContext _db;
-    public GroupService(AppDbContext db) => _db = db;
+    private readonly IHttpClientFactory _httpClientFactory;
+    public GroupService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; _httpClientFactory = httpClientFactory; }
+
+    private async Task<object> ProxyPost(string endpoint, Dictionary<string, string> formData)
+    {
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/" + endpoint);
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        req.Content = new FormUrlEncodedContent(formData);
+        var response = await client.SendAsync(req);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+    }
 
     public async Task<CountryCategoryResponse> GetAllCountriesAndCategories()
     {
@@ -178,7 +190,16 @@ public class GroupService : IGroupService
             .Select(m => new GroupModuleDto { groupModuleId = m.Id.ToString(), groupId = m.GroupId.ToString(), moduleId = m.ModuleId, moduleName = m.ModuleName, moduleStaticRef = m.ModuleStaticRef, image = m.Image, masterProfileID = m.MasterProfileId, isCustomized = m.IsCustomized, moduleOrderNo = m.ModuleOrderNo, notificationCount = m.NotificationCount, modulePriceRs = m.ModulePriceRs, modulePriceUS = m.ModulePriceUS, moduleInfo = m.ModuleInfo }).ToListAsync();
         return new ModuleListResponse { status = "0", message = "success", GroupListResult = modules };
     }
-    public async Task<NotificationCountResponse> GetNotificationCount(object request) => new() { status = "0", message = "success", notificationCount = "0" };
+    public async Task<object> GetNotificationCount(object request)
+    {
+        var dict = new Dictionary<string, string>();
+        if (request is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            foreach (var prop in je.EnumerateObject())
+                dict[prop.Name] = prop.Value.ToString();
+        }
+        return await ProxyPost("Group/GetNotificationCount", dict);
+    }
     public async Task<object> GetEmail(GetEmailRequest request) { await Task.CompletedTask; return new { status = "0", message = "success", email = "" }; }
     public async Task<DashboardResponse> GetNewDashboard(DashboardRequest request)
     {
@@ -199,7 +220,18 @@ public class GroupService : IGroupService
         var g = await _db.Groups.FindAsync(grpId);
         return new EntityInfoResponse { status = "0", message = "success", groupName = g?.GrpName, groupImg = g?.GrpImg, contactNo = g?.ContactNo, address = g?.Address1, email = g?.Email, EntityInfoResult = new List<EntityInfoItemDto>(), AdminInfoResult = new List<AdminInfoItemDto>() };
     }
-    public async Task<object> GetAllGroupListSync(GroupSyncRequest request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
+    public async Task<object> GetAllGroupListSync(GroupSyncRequest request)
+    {
+        return await ProxyPost("Group/GetAllGroupListSync", new Dictionary<string, string>
+        {
+            ["masterUID"] = request.masterUID ?? "",
+            ["imeiNo"] = request.imeiNo ?? "",
+            ["loginType"] = request.loginType ?? "0",
+            ["mobileNo"] = request.mobileNo ?? "",
+            ["countryCode"] = request.countryCode ?? "1",
+            ["updatedOn"] = request.updatedOn ?? ""
+        });
+    }
     public async Task<object> GetClubDetails(object request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
     public async Task<object> GetClubHistory(object request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
     public async Task<object> SubmitFeedback(FeedbackRequest request)
@@ -226,14 +258,96 @@ public class GroupService : IGroupService
 public class AnnouncementService : IAnnouncementService
 {
     private readonly AppDbContext _db;
-    public AnnouncementService(AppDbContext db) => _db = db;
+    private readonly IHttpClientFactory _httpClientFactory;
+    public AnnouncementService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; _httpClientFactory = httpClientFactory; }
 
-    public async Task<AnnouncementListResponse> GetAnnouncementList(AnnouncementListRequest request)
+    private async Task<object> ProxyPost(string endpoint, Dictionary<string, string> formData)
     {
-        var grpId = int.TryParse(request.groupId, out var gid) ? gid : 0;
-        var items = await _db.Announcements.Where(a => a.GroupId == grpId).OrderByDescending(a => a.CreatedAt)
-            .Select(a => new AnnouncementItemDto { announID = a.Id.ToString(), announTitle = a.AnnounTitle, announceDEsc = a.AnnounDesc, announType = a.AnnounType, announImg = a.AnnounImg, publishDate = a.PublishDate, expiryDate = a.ExpiryDate, filterType = a.FilterType, createDateTime = a.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"), link = a.Link, grpID = a.GroupId.ToString() }).ToListAsync();
-        return new AnnouncementListResponse { status = "0", message = "success", AnnounceList = items };
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/" + endpoint);
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        req.Content = new FormUrlEncodedContent(formData);
+        var response = await client.SendAsync(req);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+    }
+
+    public async Task<object> GetAnnouncementList(AnnouncementListRequest request)
+    {
+        // Try with given memberProfileId first
+        var result = await ProxyPostRaw("Announcement/GetAnnouncementList", new Dictionary<string, string>
+        {
+            ["groupId"] = request.groupId ?? "",
+            ["memberProfileId"] = request.memberProfileId ?? "",
+            ["searchText"] = request.searchText ?? "",
+            ["moduleId"] = request.moduleId ?? ""
+        });
+
+        // If empty result, the memberProfileId may be wrong (masterUID vs profileID).
+        // Resolve actual profileId from Member/GetMemberListSync and retry.
+        using var doc = System.Text.Json.JsonDocument.Parse(result);
+        var root = doc.RootElement;
+        var hasData = false;
+        if (root.TryGetProperty("TBAnnounceListResult", out var wrapper))
+        {
+            if (wrapper.TryGetProperty("AnnounListResult", out var arr) && arr.GetArrayLength() > 0)
+                hasData = true;
+        }
+
+        if (!hasData && !string.IsNullOrEmpty(request.groupId))
+        {
+            // Look up actual profileId via GetMemberListSync
+            var memberJson = await ProxyPostRaw("Member/GetMemberListSync", new Dictionary<string, string>
+            {
+                ["grpID"] = request.groupId,
+                ["updatedOn"] = "1970-01-01 00:00:00"
+            });
+            using var memberDoc = System.Text.Json.JsonDocument.Parse(memberJson);
+            var memberRoot = memberDoc.RootElement;
+            string? resolvedProfileId = null;
+            if (memberRoot.TryGetProperty("MemberDetail", out var detail) &&
+                detail.TryGetProperty("NewMemberList", out var members) &&
+                members.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                string? firstProfileId = null;
+                foreach (var m in members.EnumerateArray())
+                {
+                    var pid = m.TryGetProperty("profileID", out var p) ? p.ToString() : null;
+                    var mid = m.TryGetProperty("masterID", out var mi) ? mi.ToString() : null;
+                    if (firstProfileId == null && pid != null) firstProfileId = pid;
+                    if (mid == request.memberProfileId || pid == request.memberProfileId)
+                    {
+                        resolvedProfileId = pid;
+                        break;
+                    }
+                }
+                // If no exact match found, use first available profileId from the group
+                if (resolvedProfileId == null) resolvedProfileId = firstProfileId;
+            }
+
+            if (resolvedProfileId != null && resolvedProfileId != request.memberProfileId)
+            {
+                result = await ProxyPostRaw("Announcement/GetAnnouncementList", new Dictionary<string, string>
+                {
+                    ["groupId"] = request.groupId,
+                    ["memberProfileId"] = resolvedProfileId,
+                    ["searchText"] = request.searchText ?? "",
+                    ["moduleId"] = request.moduleId ?? ""
+                });
+            }
+        }
+
+        return System.Text.Json.JsonSerializer.Deserialize<object>(result)!;
+    }
+
+    private async Task<string> ProxyPostRaw(string endpoint, Dictionary<string, string> formData)
+    {
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/" + endpoint);
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        req.Content = new FormUrlEncodedContent(formData);
+        var response = await client.SendAsync(req);
+        return await response.Content.ReadAsStringAsync();
     }
 
     public async Task<object> GetAnnouncementDetails(AnnouncementDetailRequest request)
@@ -325,7 +439,19 @@ public class EbulletinService : IEbulletinService
 public class GalleryService : IGalleryService
 {
     private readonly AppDbContext _db;
-    public GalleryService(AppDbContext db) => _db = db;
+    private readonly IHttpClientFactory _httpClientFactory;
+    public GalleryService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; _httpClientFactory = httpClientFactory; }
+
+    private async Task<object> ProxyPost(string endpoint, Dictionary<string, string> formData)
+    {
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/" + endpoint);
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        req.Content = new FormUrlEncodedContent(formData);
+        var response = await client.SendAsync(req);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+    }
 
     public async Task<AlbumListResponse> GetAlbumsList(AlbumListRequest request)
     {
@@ -335,14 +461,45 @@ public class GalleryService : IGalleryService
         return new AlbumListResponse { status = "0", message = "success", Result = new AlbumListResult { newAlbums = albums, updatedOn = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") } };
     }
 
-    public async Task<AlbumListResponse> GetAlbumsListNew(ShowcaseAlbumsRequest request) => await GetAlbumsList(new AlbumListRequest { groupId = request.groupId });
-
-    public async Task<AlbumPhotoListResponse> GetAlbumPhotoList(AlbumPhotoListRequest request)
+    public async Task<object> GetAlbumsListNew(ShowcaseAlbumsRequest request)
     {
-        var albumId = int.TryParse(request.albumId, out var aid) ? aid : 0;
-        var photos = await _db.AlbumPhotos.Where(p => p.AlbumId == albumId)
-            .Select(p => new AlbumPhotoDto { photoId = p.Id.ToString(), Url = p.Url, Description = p.Description }).ToListAsync();
-        return new AlbumPhotoListResponse { status = "0", message = "success", Result = new AlbumPhotoListResult { newPhotos = photos, updatedOn = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") } };
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Gallery/GetAlbumsList_New");
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        var payload = new
+        {
+            groupId = request.groupId ?? "",
+            district_id = request.district_id ?? "",
+            category_id = request.category_id ?? "",
+            year = request.year ?? "",
+            clubid = request.club_id ?? "",
+            SharType = request.SharType ?? "0",
+            moduleId = request.moduleId ?? "",
+            searchText = request.searchText ?? "",
+            profileId = "",
+            updatedOn = "1970-01-01 00:00:00"
+        };
+        req.Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
+        var response = await client.SendAsync(req);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+    }
+
+    public async Task<object> GetAlbumPhotoList(AlbumPhotoListRequest request)
+    {
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Gallery/GetAlbumPhotoList_New");
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        var payload = new
+        {
+            albumId = request.albumId ?? "",
+            Financeyear = request.Financeyear ?? "",
+            groupId = request.groupId ?? ""
+        };
+        req.Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
+        var response = await client.SendAsync(req);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
     }
 
     public async Task<AlbumDetailResponse> GetAlbumDetails(AlbumDetailRequest request)
@@ -384,9 +541,31 @@ public class GalleryService : IGalleryService
         return new DeletePhotoResponse { status = "0", message = "success" };
     }
 
-    public async Task<object> GetYear(TouchBase.API.Models.DTOs.Gallery.YearRequest request) { await Task.CompletedTask; return new { status = "0", message = "success", str = new { Table = new List<object>() } }; }
-    public async Task<object> FillYearList(object request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
-    public async Task<object> GetMerList(TouchBase.API.Models.DTOs.Gallery.MerListRequest request) { await Task.CompletedTask; return new { status = "0", message = "success", Result = new { Table = new List<object>() } }; }
+    public async Task<object> GetYear(TouchBase.API.Models.DTOs.Gallery.YearRequest request)
+    {
+        return await ProxyPost("Gallery/GetYear", new Dictionary<string, string>
+        {
+            ["Type"] = request.Type?.ToString() ?? "1"
+        });
+    }
+    public async Task<object> FillYearList(object request)
+    {
+        var dict = new Dictionary<string, string>();
+        if (request is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            foreach (var prop in je.EnumerateObject())
+                dict[prop.Name] = prop.Value.ToString();
+        }
+        return await ProxyPost("Gallery/Fillyearlist", dict);
+    }
+    public async Task<object> GetMerList(TouchBase.API.Models.DTOs.Gallery.MerListRequest request)
+    {
+        return await ProxyPost("Gallery/GetMER_List", new Dictionary<string, string>
+        {
+            ["FinanceYear"] = request.FinanceYear ?? "",
+            ["TransType"] = request.TransType ?? "1"
+        });
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -395,14 +574,26 @@ public class GalleryService : IGalleryService
 public class AttendanceService : IAttendanceService
 {
     private readonly AppDbContext _db;
-    public AttendanceService(AppDbContext db) => _db = db;
+    private readonly IHttpClientFactory _httpClientFactory;
+    public AttendanceService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; _httpClientFactory = httpClientFactory; }
 
-    public async Task<AttendanceListResponse> GetAttendanceListNew(AttendanceListRequest request)
+    private async Task<object> ProxyPost(string endpoint, Dictionary<string, string> formData)
     {
-        var grpId = int.TryParse(request.GroupId, out var gid) ? gid : 0;
-        var items = await _db.AttendanceRecords.Include(ar => ar.AttendanceMembers).Include(ar => ar.AttendanceVisitors).Where(ar => ar.GroupId == grpId).OrderByDescending(ar => ar.CreatedAt)
-            .Select(ar => new AttendanceItemDto { AttendanceID = ar.Id.ToString(), AttendanceName = ar.AttendanceName, AttendanceDate = ar.AttendanceDate, Attendancetime = ar.AttendanceTime, member_count = ar.AttendanceMembers.Count(m => m.Type == "1").ToString(), visitor_count = ar.AttendanceVisitors.Count.ToString(), Description = ar.AttendanceDesc }).ToListAsync();
-        return new AttendanceListResponse { status = "0", message = "success", Result = new AttendanceListResultWrapper { Table = items } };
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/" + endpoint);
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        req.Content = new FormUrlEncodedContent(formData);
+        var response = await client.SendAsync(req);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+    }
+
+    public async Task<object> GetAttendanceListNew(AttendanceListRequest request)
+    {
+        return await ProxyPost("Attendance/GetAttendanceListNew", new Dictionary<string, string>
+        {
+            ["GroupId"] = request.GroupId ?? ""
+        });
     }
 
     public async Task<AttendanceDetailResponse> GetAttendanceDetails(AttendanceDetailRequest request)
@@ -421,20 +612,22 @@ public class AttendanceService : IAttendanceService
         return new { status = "0", message = "success" };
     }
 
-    public async Task<AttendanceMemberResponse> GetAttendanceMemberDetails(AttendanceMemberDetailRequest request)
+    public async Task<object> GetAttendanceMemberDetails(AttendanceMemberDetailRequest request)
     {
-        var id = int.TryParse(request.AttendanceID, out var aid) ? aid : 0;
-        var members = await _db.AttendanceMembers.Include(am => am.MemberProfile).Where(am => am.AttendanceRecordId == id && am.Type == request.type)
-            .Select(am => new AttendanceMemberDto { FK_MemberID = am.MemberProfileId.ToString(), MemberName = am.MemberProfile.MemberName, Designation = am.MemberProfile.Designation, image = am.MemberProfile.ProfilePic }).ToListAsync();
-        return new AttendanceMemberResponse { status = "0", message = "success", Result = members };
+        return await ProxyPost("Attendance/getAttendanceMemberDetails", new Dictionary<string, string>
+        {
+            ["AttendanceID"] = request.AttendanceID ?? "",
+            ["type"] = request.type ?? "1"
+        });
     }
 
-    public async Task<AttendanceVisitorResponse> GetAttendanceVisitorsDetails(AttendanceMemberDetailRequest request)
+    public async Task<object> GetAttendanceVisitorsDetails(AttendanceMemberDetailRequest request)
     {
-        var id = int.TryParse(request.AttendanceID, out var aid) ? aid : 0;
-        var visitors = await _db.AttendanceVisitors.Where(av => av.AttendanceRecordId == id)
-            .Select(av => new AttendanceVisitorDto { PK_AttendanceVisitorID = av.Id.ToString(), FK_AttendanceID = av.AttendanceRecordId.ToString(), VisitorsName = av.VisitorName }).ToListAsync();
-        return new AttendanceVisitorResponse { status = "0", message = "success", Result = visitors };
+        return await ProxyPost("Attendance/getAttendanceVisitorsDetails", new Dictionary<string, string>
+        {
+            ["AttendanceID"] = request.AttendanceID ?? "",
+            ["type"] = request.type ?? "2"
+        });
     }
 
 }
@@ -445,7 +638,28 @@ public class AttendanceService : IAttendanceService
 public class CelebrationsService : ICelebrationsService
 {
     private readonly AppDbContext _db;
-    public CelebrationsService(AppDbContext db) => _db = db;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private const string OldApiBase = "https://api.imeiconnect.com/api/";
+    private const string OldApiAuth = "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==";
+
+    public CelebrationsService(AppDbContext db, IHttpClientFactory httpClientFactory)
+    {
+        _db = db;
+        _httpClientFactory = httpClientFactory;
+    }
+
+    private async Task<string> ProxyToOldApi(string endpoint, Dictionary<string, string> formData)
+    {
+        var client = _httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(120);
+        var request = new HttpRequestMessage(HttpMethod.Post, OldApiBase + endpoint)
+        {
+            Content = new FormUrlEncodedContent(formData)
+        };
+        request.Headers.TryAddWithoutValidation("Authorization", OldApiAuth);
+        var response = await client.SendAsync(request);
+        return await response.Content.ReadAsStringAsync();
+    }
 
     public async Task<MonthEventListResponse> GetMonthEventList(MonthEventListRequest request)
     {
@@ -454,8 +668,25 @@ public class CelebrationsService : ICelebrationsService
         return new MonthEventListResponse { status = "0", message = "success", Result = new MonthEventResult { Events = events } };
     }
     public async Task<object> GetEventMinDetails(EventMinDetailRequest request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
-    public async Task<TodaysBirthdayResponse> GetTodaysBirthday(TodaysBirthdayRequest request) { await Task.CompletedTask; return new TodaysBirthdayResponse { status = "0", message = "success", Result = new List<BirthdayItemDto>() }; }
-    public async Task<TypeWiseResponse> GetMonthEventListTypeWiseNational(TypeWiseRequest request) { var r = await GetMonthEventList(new MonthEventListRequest { }); return new TypeWiseResponse { status = "0", message = "success", Result = new TypeWiseResult { Events = r.Result?.Events } }; }
+    public async Task<object> GetTodaysBirthday(TodaysBirthdayRequest request)
+    {
+        var json = await ProxyToOldApi("Celebrations/GetTodaysBirthday", new Dictionary<string, string>
+        {
+            ["groupID"] = request.groupID ?? ""
+        });
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+    }
+    public async Task<object> GetMonthEventListTypeWiseNational(TypeWiseRequest request)
+    {
+        var json = await ProxyToOldApi("Celebrations/GetMonthEventListTypeWise_National", new Dictionary<string, string>
+        {
+            ["GroupID"] = request.GroupID ?? "",
+            ["groupCategory"] = request.groupCategory ?? "2",
+            ["SelectedDate"] = request.SelectedDate ?? DateTime.UtcNow.ToString("yyyy-MM-dd"),
+            ["Type"] = request.Type ?? "B"
+        });
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+    }
     public async Task<MonthEventListResponse> GetMonthEventListDetailsNational(DateWiseRequest request) => await GetMonthEventList(new MonthEventListRequest { });
 }
 
@@ -482,35 +713,80 @@ public class ServiceDirectoryService : IServiceDirectoryService
 public class SettingsService : ISettingsService
 {
     private readonly AppDbContext _db;
-    public SettingsService(AppDbContext db) => _db = db;
-    public async Task<TouchbaseSettingResponse> GetTouchbaseSetting(TouchbaseSettingRequest request)
+    private readonly IHttpClientFactory _httpClientFactory;
+    public SettingsService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; _httpClientFactory = httpClientFactory; }
+
+    private async Task<object> ProxyPost(string endpoint, Dictionary<string, string> formData)
     {
-        var uid = int.TryParse(request.mainMasterId, out var u) ? u : 0;
-        var settings = await _db.TouchbaseSettings.Where(ts => ts.UserId == uid).Select(ts => new SettingItemDto { grpId = ts.GrpId, grpVal = ts.GrpVal, grpName = ts.GrpName }).ToListAsync();
-        return new TouchbaseSettingResponse { status = "0", message = "success", TBSettingResult = new TouchbaseSettingResultWrapper { AllTBSettingResults = new TouchbaseSettingResults { TBSettingResults = settings } } };
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/" + endpoint);
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        req.Content = new FormUrlEncodedContent(formData);
+        var response = await client.SendAsync(req);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
     }
-    public async Task<object> UpdateTouchbaseSetting(UpdateTouchbaseSettingRequest request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
-    public async Task<GroupSettingResponse> GetGroupSetting(GroupSettingRequest request)
+
+    public async Task<object> GetTouchbaseSetting(TouchbaseSettingRequest request)
     {
-        var grpId = int.TryParse(request.GroupId, out var gid) ? gid : 0;
-        var settings = await _db.GroupSettings.Where(gs => gs.GroupId == grpId).Select(gs => new GroupSettingItemDto { moduleId = gs.ModuleId, modVal = gs.ModVal, modName = gs.ModName }).ToListAsync();
-        return new GroupSettingResponse { status = "0", message = "success", TBGroupSettingResult = new GroupSettingResultWrapper { GRpSettingResult = new GroupSettingResult { GRpSettingDetails = settings } } };
+        return await ProxyPost("setting/TouchbaseSetting", new Dictionary<string, string>
+        {
+            ["mainMasterId"] = request.mainMasterId ?? ""
+        });
     }
-    public async Task<object> UpdateGroupSetting(UpdateGroupSettingRequest request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
+    public async Task<object> UpdateTouchbaseSetting(UpdateTouchbaseSettingRequest request)
+    {
+        return await ProxyPost("setting/TouchbaseSetting", new Dictionary<string, string>
+        {
+            ["mainMasterId"] = request.mainMasterId ?? "",
+            ["GroupId"] = request.GroupId ?? "",
+            ["UpdatedValue"] = request.UpdatedValue ?? ""
+        });
+    }
+    public async Task<object> GetGroupSetting(GroupSettingRequest request)
+    {
+        return await ProxyPost("Setting/GetGroupSetting", new Dictionary<string, string>
+        {
+            ["groupId"] = request.GroupId ?? "",
+            ["groupProfileId"] = request.GroupProfileId ?? ""
+        });
+    }
+    public async Task<object> UpdateGroupSetting(UpdateGroupSettingRequest request)
+    {
+        return await ProxyPost("setting/GroupSetting", new Dictionary<string, string>
+        {
+            ["GroupId"] = request.GroupId ?? "",
+            ["GroupProfileId"] = request.GroupProfileId ?? "",
+            ["ModuleId"] = request.ModuleId ?? "",
+            ["UpdatedValue"] = request.UpdatedValue ?? ""
+        });
+    }
 }
 
 public class FindClubService : IFindClubService
 {
     private readonly AppDbContext _db;
-    public FindClubService(AppDbContext db) => _db = db;
-    public async Task<ClubSearchResponse> GetClubList(ClubSearchRequest request)
+    private readonly IHttpClientFactory _httpClientFactory;
+    public FindClubService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; _httpClientFactory = httpClientFactory; }
+    public async Task<object> GetClubList(ClubSearchRequest request)
     {
-        var query = _db.Clubs.AsQueryable();
-        if (!string.IsNullOrEmpty(request.keyword)) query = query.Where(c => c.ClubName!.Contains(request.keyword));
-        var clubs = await query.Take(50).Select(c => new TouchBase.API.Models.DTOs.FindClub.ClubItemDto { GroupId = c.GroupId.ToString(), ClubName = c.ClubName, ClubType = c.ClubType, ClubId = c.ClubId, District = c.District, CharterDate = c.CharterDate, MeetingDay = c.MeetingDay, MeetingTime = c.MeetingTime, Website = c.Website }).ToListAsync();
-        return new ClubSearchResponse { status = "0", message = "success", ClubResult = clubs };
+        var client = _httpClientFactory.CreateClient();
+        var httpReq = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/FindClub/GetClubList");
+        httpReq.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        var formData = new Dictionary<string, string>
+        {
+            ["keyword"] = request.keyword ?? "",
+            ["country"] = request.country ?? "",
+            ["meetingDay"] = request.meetingDay ?? "",
+            ["district"] = request.district ?? "",
+            ["stateProvinceCity"] = request.stateProvinceCity ?? ""
+        };
+        httpReq.Content = new FormUrlEncodedContent(formData);
+        var response = await client.SendAsync(httpReq);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
     }
-    public async Task<ClubSearchResponse> GetClubsNearMe(ClubNearMeRequest request) => await GetClubList(new ClubSearchRequest());
+    public async Task<object> GetClubsNearMe(ClubNearMeRequest request) => await GetClubList(new ClubSearchRequest());
     public async Task<ClubDetailResponse> GetClubDetails(ClubDetailRequest request)
     {
         var grpId = int.TryParse(request.grpId, out var gid) ? gid : 0;
@@ -522,37 +798,70 @@ public class FindClubService : IFindClubService
     public async Task<object> GetPublicAlbumsList(ClubDetailRequest request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
     public async Task<object> GetPublicEventsList(ClubDetailRequest request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
     public async Task<object> GetPublicNewsletterList(ClubDetailRequest request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
-    public async Task<CommitteeListResponse> GetCommitteeList(ClubDetailRequest request) { await Task.CompletedTask; return new CommitteeListResponse { status = "0", message = "success" }; }
+    public async Task<object> GetCommitteeList()
+    {
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Get, "https://api.imeiconnect.com/api/FindClub/GetCommitteelist");
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        var response = await client.SendAsync(req);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+    }
 }
 
 public class FindRotarianService : IFindRotarianService
 {
     private readonly AppDbContext _db;
-    public FindRotarianService(AppDbContext db) => _db = db;
+    private readonly IHttpClientFactory _httpClientFactory;
+    public FindRotarianService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; _httpClientFactory = httpClientFactory; }
+
+    private async Task<object> ProxyPost(string endpoint, Dictionary<string, string> formData)
+    {
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/" + endpoint);
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        req.Content = new FormUrlEncodedContent(formData);
+        var response = await client.SendAsync(req);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+    }
+
     public async Task<ZoneChapterResponse> GetZoneChapterList()
     {
         var zones = await _db.Zones.Select(z => new TouchBase.API.Models.DTOs.FindRotarian.ZoneItemDto { ZoneID = z.Id.ToString(), ZoneName = z.ZoneName }).ToListAsync();
         var chapters = await _db.Chapters.Select(c => new ChapterItemDto { ChapterID = c.Id.ToString(), ChapterName = c.ChapterName, ZoneID = c.ZoneId.ToString() }).ToListAsync();
         return new ZoneChapterResponse { status = "0", message = "success", ZoneChapterResult = new ZoneChapterResult { Table = zones, Table1 = chapters } };
     }
-    public async Task<RotarianSearchResponse> GetRotarianList(RotarianSearchRequest request)
+    public async Task<object> GetRotarianList(RotarianSearchRequest request)
     {
-        var query = _db.MemberProfiles.AsQueryable();
-        if (!string.IsNullOrEmpty(request.name)) query = query.Where(mp => mp.MemberName!.Contains(request.name));
-        var items = await query.Take(50).Select(mp => new RotarianItemDto { masterUID = mp.UserId.ToString(), profileID = mp.Id.ToString(), memberMobile = mp.MemberMobile, member_Name = mp.MemberName, mem_Category = mp.Category, Grade = mp.MembershipGrade, pic = mp.ProfilePic }).ToListAsync();
-        return new RotarianSearchResponse { status = "0", message = "success", RotarianResult = items };
+        return await ProxyPost("FindRotarian/GetRotarianList", new Dictionary<string, string>
+        {
+            ["name"] = request.name ?? "",
+            ["Grade"] = request.Grade ?? "",
+            ["memberMobile"] = request.memberMobile ?? "",
+            ["club"] = request.club ?? "",
+            ["Category"] = request.Category ?? ""
+        });
     }
-    public async Task<RotarianDetailResponse> GetRotarianDetails(RotarianDetailRequest request)
+    public async Task<object> GetRotarianDetails(RotarianDetailRequest request)
     {
-        var pid = int.TryParse(request.memberProfileId, out var p) ? p : 0;
-        var mp = await _db.MemberProfiles.Include(m => m.Addresses).Include(m => m.User).FirstOrDefaultAsync(m => m.Id == pid);
-        if (mp == null) return new RotarianDetailResponse { status = "1", message = "Not found" };
-        var addr = mp.Addresses.FirstOrDefault();
-        return new RotarianDetailResponse { status = "0", message = "success", Result = new RotarianDetailResult { Table = new List<RotarianDetailDto> { new() { memberName = mp.MemberName, pic = mp.ProfilePic, masterUID = mp.UserId.ToString(), memberMobile = mp.MemberMobile, memberEmail = mp.MemberEmail, bloodGroup = mp.BloodGroup, membershipGrade = mp.MembershipGrade, dob = mp.Dob, doa = mp.Doa, whatsappNum = mp.WhatsappNum, hideWhatsnum = mp.HideWhatsnum, hideMail = mp.HideMail, hideNum = mp.HideNum, companyName = mp.CompanyName, designation = mp.Designation, classification = mp.Classification, address = addr?.Address, city = addr?.City, state = addr?.State, country = addr?.Country, pincode = addr?.Pincode } } } };
+        return await ProxyPost("FindRotarian/GetrotarianDetails", new Dictionary<string, string>
+        {
+            ["memberProfileId"] = request.memberProfileId ?? ""
+        });
     }
-    public async Task<CategoryListResponse> GetCategoryList() { await Task.CompletedTask; return new CategoryListResponse { status = "0", message = "success", Result = new List<TouchBase.API.Models.DTOs.FindRotarian.CategoryItemDto>() }; }
-    public async Task<GradeListResponse> GetMemberGradeList() { await Task.CompletedTask; return new GradeListResponse { status = "0", message = "success", Result = new List<GradeItemDto>() }; }
-    public async Task<ClubListResponse> GetClubList() { await Task.CompletedTask; return new ClubListResponse { status = "0", message = "success", Result = new List<TouchBase.API.Models.DTOs.FindRotarian.ClubItemDto>() }; }
+    public async Task<object> GetCategoryList()
+    {
+        return await ProxyPost("FindRotarian/GetCategoryList", new Dictionary<string, string>());
+    }
+    public async Task<object> GetMemberGradeList()
+    {
+        return await ProxyPost("FindRotarian/GetMemberGradeList", new Dictionary<string, string>());
+    }
+    public async Task<object> GetClubList()
+    {
+        return await ProxyPost("FindRotarian/GetClubList", new Dictionary<string, string>());
+    }
 }
 
 public class DistrictService : IDistrictService
@@ -609,12 +918,22 @@ public class WebLinkService : IWebLinkService
 public class PastPresidentService : IPastPresidentService
 {
     private readonly AppDbContext _db;
-    public PastPresidentService(AppDbContext db) => _db = db;
-    public async Task<PastPresidentResponse> GetPastPresidentsList(PastPresidentRequest request)
+    private readonly IHttpClientFactory _httpClientFactory;
+    public PastPresidentService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; _httpClientFactory = httpClientFactory; }
+    public async Task<object> GetPastPresidentsList(PastPresidentRequest request)
     {
-        var grpId = int.TryParse(request.GroupId, out var gid) ? gid : 0;
-        var presidents = await _db.PastPresidents.Where(pp => pp.GroupId == grpId).Select(pp => new PastPresidentDto { PastPresidentId = pp.Id.ToString(), MemberName = pp.MemberName, PhotoPath = pp.PhotoPath, TenureYear = pp.TenureYear, designation = pp.Designation }).ToListAsync();
-        return new PastPresidentResponse { status = "0", message = "success", TBPastPresidentList = new PastPresidentListWrapper { newRecords = presidents } };
+        var client = _httpClientFactory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/PastPresidents/getPastPresidentsList");
+        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        req.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["GroupId"] = request.GroupId ?? "",
+            ["SearchText"] = request.SearchText ?? "",
+            ["updateOn"] = request.updateOn ?? "1970/01/01 00:00:00"
+        });
+        var response = await client.SendAsync(req);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
     }
 }
 

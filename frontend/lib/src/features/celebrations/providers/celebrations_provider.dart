@@ -60,12 +60,10 @@ class CelebrationsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── iOS: getMonthEventList → POST Celebrations/GetMonthEventList ──
+  // ─── Fetch all month events (B+A+E) via National API for calendar markers ──
   Future<bool> fetchMonthEvents({
-    required String profileId,
     required String groupId,
     String? selectedDate,
-    String updatedOn = '2019/01/01 00:00:00',
   }) async {
     _isLoading = true;
     _error = null;
@@ -75,37 +73,40 @@ class CelebrationsProvider extends ChangeNotifier {
         '${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}-01';
 
     try {
-      final response = await ApiClient.instance.post(
-        ApiConstants.celebrationGetMonthEventList,
-        body: {
-          'profileId': profileId,
-          'groupIds': groupId,
-          'selectedDate': date,
-          'updatedOns': updatedOn,
-          'groupCategory': '2',
-        },
-      );
+      final allEvents = <CelebrationEvent>[];
 
-      if (response.statusCode == 200) {
-        final jsonData = json.decode(response.body) as Map<String, dynamic>;
-        final result = TBEventListResult.fromJson(
-            jsonData['TBEventListResult'] as Map<String, dynamic>? ??
-                jsonData);
+      // Fetch all 3 types in parallel using the national API
+      final responses = await Future.wait([
+        ApiClient.instance.post(
+          ApiConstants.celebrationGetMonthEventListTypeWiseNational,
+          body: {'GroupID': groupId, 'groupCategory': '2', 'SelectedDate': date, 'Type': 'B'},
+        ),
+        ApiClient.instance.post(
+          ApiConstants.celebrationGetMonthEventListTypeWiseNational,
+          body: {'GroupID': groupId, 'groupCategory': '2', 'SelectedDate': date, 'Type': 'A'},
+        ),
+        ApiClient.instance.post(
+          ApiConstants.celebrationGetMonthEventListTypeWiseNational,
+          body: {'GroupID': groupId, 'groupCategory': '2', 'SelectedDate': date, 'Type': 'E'},
+        ),
+      ]);
 
-        if (result.isSuccess) {
-          _monthEvents = _applyCurrentUserHideFlags([
-            ...result.result?.newEvents ?? [],
-            ...result.result?.updatedEvents ?? [],
-          ]);
-          _isLoading = false;
-          notifyListeners();
-          return true;
-        } else {
-          _error = result.message ?? 'Failed to load celebrations';
+      for (final response in responses) {
+        if (response.statusCode == 200) {
+          final jsonData = json.decode(response.body) as Map<String, dynamic>;
+          final rawResult =
+              jsonData['TBEventListTypeResult'] as Map<String, dynamic>? ?? jsonData;
+          final result = TBEventListTypeResult.fromJson(rawResult);
+          if (result.isSuccess) {
+            allEvents.addAll(result.events ?? []);
+          }
         }
-      } else {
-        _error = 'Server error';
       }
+
+      _monthEvents = _applyCurrentUserHideFlags(allEvents);
+      _isLoading = false;
+      notifyListeners();
+      return true;
     } catch (e) {
       _error = 'Error loading celebrations: $e';
       debugPrint('fetchMonthEvents error: $e');

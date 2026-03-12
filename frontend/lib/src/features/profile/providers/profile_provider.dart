@@ -142,9 +142,9 @@ class ProfileProvider extends ChangeNotifier {
   }
 
   // ─── Fetch Past Presidents ───────────────────────────────
-  /// iOS: PastPresidentListViewController.functionForGetPastPresidentList()
-  /// API: PastPresidents/getPastPresidentsList
-  /// Params: GroupId (dynamic), SearchText (empty), updateOn (static "1970/01/01 00:00:00")
+  /// iOS/Android: PastPresidentActivity uses GROUP_ID_1 (grpid1 = org admin group)
+  /// while Past Chairman (branch dashboard) uses GROUP_ID_0 (grpid0 = branch group).
+  /// Both call same API: PastPresidents/getPastPresidentsList — different GroupId gives different data.
   Future<void> fetchPastPresidents({
     required String groupId,
   }) async {

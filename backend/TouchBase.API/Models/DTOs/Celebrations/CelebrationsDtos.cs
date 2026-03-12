@@ -56,7 +56,7 @@ public class CelebrationEventDto
     public string? eventDate { get; set; }
     public string? title { get; set; }
     public string? contactNumber { get; set; }
-    public string? emailId { get; set; }
+    public string? contactEmailId { get; set; }
     public List<CelebrationEmailDto>? EmailId { get; set; }
     public List<CelebrationMobileDto>? MobileNo { get; set; }
     public string? hideWhatsnum { get; set; }

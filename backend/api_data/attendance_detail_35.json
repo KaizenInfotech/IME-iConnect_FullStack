@@ -1,0 +1,1 @@
+{"TBAttendanceDetailsResult":{"status":"0","message":"success","AttendanceDetailsResult":[{"AttendanceResult":{"AttendanceID":"35","AttendanceName":"khush","AttendanceDate":"02 February 2026","Attendancetime":"07:15:00 PM","AttendanceDesc":"test","MemberCount":2,"AnnsCount":0,"AnnetsCount":0,"VisitorsCount":0,"RotarianCount":0,"DistrictDelegatesCount":0}}]}}

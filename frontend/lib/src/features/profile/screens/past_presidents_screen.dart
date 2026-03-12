@@ -96,7 +96,7 @@ class _PastPresidentTile extends StatelessWidget {
                   ? NetworkImage(president.pic!)
                   : null,
           child: (president.pic == null || president.pic!.isEmpty)
-              ? const Icon(Icons.person, color: AppColors.grayMedium)
+              ? const Icon(Icons.person, color: AppColors.primary)
               : null,
         ),
         title: Text(

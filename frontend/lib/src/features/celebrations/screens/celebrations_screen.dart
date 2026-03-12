@@ -35,7 +35,6 @@ class _CelebrationsScreenState extends State<CelebrationsScreen> {
   int _selectedTabIndex = 0;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  String _profileId = '';
   String _groupId = '';
   bool _showCalendar = false;
 
@@ -48,9 +47,6 @@ class _CelebrationsScreenState extends State<CelebrationsScreen> {
 
   Future<void> _loadData() async {
     final localStorage = LocalStorage.instance;
-    _profileId = widget.profileId ??
-        localStorage.authProfileId ??
-        '';
     _groupId = widget.groupId ??
         localStorage.authGroupId ??
         '';
@@ -59,9 +55,8 @@ class _CelebrationsScreenState extends State<CelebrationsScreen> {
 
     final provider = context.read<CelebrationsProvider>();
 
-    // Fetch month events for calendar markers
+    // Fetch month events for calendar markers (national API)
     await provider.fetchMonthEvents(
-      profileId: _profileId,
       groupId: _groupId,
     );
 
@@ -115,7 +110,6 @@ class _CelebrationsScreenState extends State<CelebrationsScreen> {
     final provider = context.read<CelebrationsProvider>();
     provider.setSelectedMonth(focusedDay);
     provider.fetchMonthEvents(
-      profileId: _profileId,
       groupId: _groupId,
     );
     _fetchTabData();

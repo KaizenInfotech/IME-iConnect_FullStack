@@ -56,6 +56,10 @@ class AppConstants {
   /// iOS: user_auth_token_groupId
   static const String keyAuthGroupId = 'auth_group_id';
 
+  /// Android: grpid1 — the original org/national admin group ID from login.
+  /// Never overwritten by group selection on welcome screen.
+  static const String keyOrgGroupId = 'org_group_id';
+
   // ─── SESSION KEYS ─────────────────────────────────────
   /// iOS: grpProfileId / grpProfileid
   static const String keyGrpProfileId = 'grp_profile_id';

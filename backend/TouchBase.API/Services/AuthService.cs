@@ -14,11 +14,13 @@ public class AuthService : IAuthService
 {
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public AuthService(AppDbContext db, IConfiguration config)
+    public AuthService(AppDbContext db, IConfiguration config, IHttpClientFactory httpClientFactory)
     {
         _db = db;
         _config = config;
+        _httpClientFactory = httpClientFactory;
     }
 
     public async Task<LoginResponse> RequestOtp(LoginRequest request)
@@ -85,12 +87,39 @@ public class AuthService : IAuthService
         var profile = user.MemberProfiles.FirstOrDefault();
         var grpMember = profile?.GroupMemberships.FirstOrDefault();
 
+        // Fetch grpid1 from live API welcome screen (org/national admin group)
+        // grpid1 = first group from GetWelcomeScreen, which is the org-level group
+        string? liveGrpid1 = null;
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            var liveReq = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Login/GetWelcomeScreen");
+            liveReq.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+            liveReq.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["masterUID"] = user.Id.ToString()
+            });
+            var liveResp = await client.SendAsync(liveReq);
+            var liveJson = await liveResp.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(liveJson);
+            if (doc.RootElement.TryGetProperty("WelcomeResult", out var wr) &&
+                wr.TryGetProperty("grpPartResults", out var parts) &&
+                parts.GetArrayLength() > 0)
+            {
+                var first = parts[0];
+                if (first.TryGetProperty("GrpPartResult", out var gpr) &&
+                    gpr.TryGetProperty("grpId", out var gid))
+                    liveGrpid1 = gid.ToString();
+            }
+        }
+        catch { /* fallback to local value */ }
+
         // Build response matching old API format: { ds: { Table: [...] } }
         var loginTable = new LoginTable
         {
             masterUID = user.Id,
             grpid0 = grpMember?.GroupId ?? 0,
-            grpid1 = grpMember?.GroupId.ToString(),
+            grpid1 = liveGrpid1 ?? grpMember?.GroupId.ToString(),
             GrpName = grpMember?.Group?.GrpName,
             FirstName = user.FirstName,
             MiddleName = user.MiddleName,

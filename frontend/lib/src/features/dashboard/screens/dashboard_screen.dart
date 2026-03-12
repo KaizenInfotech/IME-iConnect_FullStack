@@ -472,8 +472,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     switch (index) {
       case 0:
         // iOS: PastPresidentListViewController — PastPresidents/getPastPresidentsList
+        // Android: uses GROUP_ID_1 (grpid1 = national/org admin group), NOT GROUP_ID_0
+        debugPrint('DEBUG Past Presidents: orgGroupId=${LocalStorage.instance.orgGroupId}, groupId=${LocalStorage.instance.groupId}, authGroupId=${LocalStorage.instance.authGroupId}');
         _pushAndCheckSession('/past-presidents', extra: {
-          'groupId': LocalStorage.instance.groupId ?? '',
+          'groupId': LocalStorage.instance.orgGroupId ?? LocalStorage.instance.groupId ?? '',
         });
         break;
       case 1:

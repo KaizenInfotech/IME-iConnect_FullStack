@@ -107,11 +107,11 @@ public class MemberController : ControllerBase
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
 
-    [HttpPost("GetMemberDetails")]
-    public async Task<IActionResult> GetMemberDetails([FromBody] MemberDetailRequest request)
+    [HttpGet("GetMemberDetails")]
+    public async Task<IActionResult> GetMemberDetails([FromQuery] string? MemProfileId, [FromQuery] string? GrpID)
     {
-        try { return Ok(await _memberService.GetMember(request)); }
-        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+        try { return Ok(await _memberService.GetMemberDetails(MemProfileId, GrpID)); }
+        catch (Exception ex) { return Ok(new { TBGetSponsorReferredResult = new { status = "1", message = ex.Message } }); }
     }
 
     [HttpPost("Saveprofile")]

@@ -61,7 +61,7 @@ public interface IGroupService
     Task<object> RemoveGroupCategory(RemoveCategoryRequest request);
     Task<object> UpdateMemberGroupCategory(UpdateCategoryRequest request);
     Task<ModuleListResponse> GetGroupModulesList(ModuleListRequest request);
-    Task<NotificationCountResponse> GetNotificationCount(object request);
+    Task<object> GetNotificationCount(object request);
     Task<object> GetEmail(GetEmailRequest request);
     Task<DashboardResponse> GetNewDashboard(DashboardRequest request);
     Task<object> GetRotaryLibraryData(object request);
@@ -89,11 +89,12 @@ public interface IMemberService
     Task<UpdateResponse> UpdateFamilyDetails(UpdateFamilyRequest request);
     Task<MemberDetailResponse> GetUpdatedProfileDetails(GetUpdatedProfileRequest request);
     Task<object> UploadProfilePhoto(IFormFile file, ProfilePhotoRequest request);
-    Task<BodListResponse> GetBodList(BodListRequest request);
-    Task<GoverningCouncilResponse> GetGoverningCouncil(GoverningCouncilRequest request);
+    Task<object> GetBodList(BodListRequest request);
+    Task<object> GetGoverningCouncil(GoverningCouncilRequest request);
     Task<UpdateResponse> UpdateMember(UpdateMemberRequest request);
     Task<UpdateResponse> UpdateProfilePersonalDetails(UpdatePersonalDetailsRequest request);
     Task<object> SaveProfile(SaveProfileRequest request);
+    Task<object> GetMemberDetails(string? memProfileId, string? grpId);
 }
 
 public interface IEventService
@@ -107,7 +108,7 @@ public interface IEventService
 
 public interface IAnnouncementService
 {
-    Task<AnnouncementListResponse> GetAnnouncementList(AnnouncementListRequest request);
+    Task<object> GetAnnouncementList(AnnouncementListRequest request);
     Task<object> GetAnnouncementDetails(AnnouncementDetailRequest request);
     Task<object> AddAnnouncement(AddAnnouncementRequest request);
 }
@@ -128,8 +129,8 @@ public interface IEbulletinService
 public interface IGalleryService
 {
     Task<AlbumListResponse> GetAlbumsList(AlbumListRequest request);
-    Task<AlbumListResponse> GetAlbumsListNew(ShowcaseAlbumsRequest request);
-    Task<AlbumPhotoListResponse> GetAlbumPhotoList(AlbumPhotoListRequest request);
+    Task<object> GetAlbumsListNew(ShowcaseAlbumsRequest request);
+    Task<object> GetAlbumPhotoList(AlbumPhotoListRequest request);
     Task<AlbumDetailResponse> GetAlbumDetails(AlbumDetailRequest request);
     Task<CreateAlbumResponse> AddUpdateAlbum(CreateAlbumRequest request);
     Task<object> AddUpdateAlbumPhoto(IFormFile file, string photoId, string desc, string albumId, string groupId, string createdBy);
@@ -141,19 +142,19 @@ public interface IGalleryService
 
 public interface IAttendanceService
 {
-    Task<AttendanceListResponse> GetAttendanceListNew(AttendanceListRequest request);
+    Task<object> GetAttendanceListNew(AttendanceListRequest request);
     Task<AttendanceDetailResponse> GetAttendanceDetails(AttendanceDetailRequest request);
     Task<object> AttendanceDelete(AttendanceDeleteRequest request);
-    Task<AttendanceMemberResponse> GetAttendanceMemberDetails(AttendanceMemberDetailRequest request);
-    Task<AttendanceVisitorResponse> GetAttendanceVisitorsDetails(AttendanceMemberDetailRequest request);
+    Task<object> GetAttendanceMemberDetails(AttendanceMemberDetailRequest request);
+    Task<object> GetAttendanceVisitorsDetails(AttendanceMemberDetailRequest request);
 }
 
 public interface ICelebrationsService
 {
     Task<MonthEventListResponse> GetMonthEventList(MonthEventListRequest request);
     Task<object> GetEventMinDetails(EventMinDetailRequest request);
-    Task<TodaysBirthdayResponse> GetTodaysBirthday(TodaysBirthdayRequest request);
-    Task<TypeWiseResponse> GetMonthEventListTypeWiseNational(TypeWiseRequest request);
+    Task<object> GetTodaysBirthday(TodaysBirthdayRequest request);
+    Task<object> GetMonthEventListTypeWiseNational(TypeWiseRequest request);
     Task<MonthEventListResponse> GetMonthEventListDetailsNational(DateWiseRequest request);
 }
 
@@ -168,32 +169,32 @@ public interface IServiceDirectoryService
 
 public interface ISettingsService
 {
-    Task<TouchbaseSettingResponse> GetTouchbaseSetting(TouchbaseSettingRequest request);
+    Task<object> GetTouchbaseSetting(TouchbaseSettingRequest request);
     Task<object> UpdateTouchbaseSetting(UpdateTouchbaseSettingRequest request);
-    Task<GroupSettingResponse> GetGroupSetting(GroupSettingRequest request);
+    Task<object> GetGroupSetting(GroupSettingRequest request);
     Task<object> UpdateGroupSetting(UpdateGroupSettingRequest request);
 }
 
 public interface IFindClubService
 {
-    Task<ClubSearchResponse> GetClubList(ClubSearchRequest request);
-    Task<ClubSearchResponse> GetClubsNearMe(ClubNearMeRequest request);
+    Task<object> GetClubList(ClubSearchRequest request);
+    Task<object> GetClubsNearMe(ClubNearMeRequest request);
     Task<ClubDetailResponse> GetClubDetails(ClubDetailRequest request);
     Task<ClubMembersResponse> GetClubMembers(ClubDetailRequest request);
     Task<object> GetPublicAlbumsList(ClubDetailRequest request);
     Task<object> GetPublicEventsList(ClubDetailRequest request);
     Task<object> GetPublicNewsletterList(ClubDetailRequest request);
-    Task<CommitteeListResponse> GetCommitteeList(ClubDetailRequest request);
+    Task<object> GetCommitteeList();
 }
 
 public interface IFindRotarianService
 {
     Task<ZoneChapterResponse> GetZoneChapterList();
-    Task<RotarianSearchResponse> GetRotarianList(RotarianSearchRequest request);
-    Task<RotarianDetailResponse> GetRotarianDetails(RotarianDetailRequest request);
-    Task<CategoryListResponse> GetCategoryList();
-    Task<GradeListResponse> GetMemberGradeList();
-    Task<ClubListResponse> GetClubList();
+    Task<object> GetRotarianList(RotarianSearchRequest request);
+    Task<object> GetRotarianDetails(RotarianDetailRequest request);
+    Task<object> GetCategoryList();
+    Task<object> GetMemberGradeList();
+    Task<object> GetClubList();
 }
 
 public interface IDistrictService
@@ -219,7 +220,7 @@ public interface IWebLinkService
 
 public interface IPastPresidentService
 {
-    Task<PastPresidentResponse> GetPastPresidentsList(PastPresidentRequest request);
+    Task<object> GetPastPresidentsList(PastPresidentRequest request);
 }
 
 public interface IMerService

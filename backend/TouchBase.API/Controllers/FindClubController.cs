@@ -60,10 +60,10 @@ public class FindClubController : ControllerBase
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
 
-    [HttpPost("GetCommitteelist")]
-    public async Task<IActionResult> GetCommitteeList([FromBody] ClubDetailRequest request)
+    [HttpGet("GetCommitteelist")]
+    public async Task<IActionResult> GetCommitteeList()
     {
-        try { return Ok(await _findClubService.GetCommitteeList(request)); }
+        try { return Ok(await _findClubService.GetCommitteeList()); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
 }

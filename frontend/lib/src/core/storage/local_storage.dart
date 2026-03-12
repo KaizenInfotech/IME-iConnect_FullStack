@@ -129,6 +129,11 @@ class LocalStorage {
   Future<bool> setAuthGroupId(String value) =>
       setString(AppConstants.keyAuthGroupId, value);
 
+  /// Android: grpid1 — original org/national admin group from login (never overwritten)
+  String? get orgGroupId => getString(AppConstants.keyOrgGroupId);
+  Future<bool> setOrgGroupId(String value) =>
+      setString(AppConstants.keyOrgGroupId, value);
+
   // ─── SESSION KEYS ─────────────────────────────────────
 
   /// iOS: grpProfileId / grpProfileid

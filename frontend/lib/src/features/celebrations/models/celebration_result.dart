@@ -264,40 +264,45 @@ class CelebrationEvent extends BaseModel {
 
   String get displayTitle => title ?? eventTitle ?? '';
 
-  /// Phone buttons enabled when either WhatsApp mobile OR secondary mobile
-  /// toggle is ON (== "1"). Checks hide flags first, then MobileNo array,
-  /// then ContactNumber fallback.
+  /// Filter MobileNo entries to only actual phone numbers (not emails).
+  /// When phone is hidden, the server keeps the array but fills it with
+  /// email addresses instead of phone numbers.
+  List<CelebrationMobileItem> get _actualPhoneNumbers {
+    if (mobileNos == null) return [];
+    return mobileNos!.where((m) {
+      final num = m.mobileNo ?? '';
+      return num.isNotEmpty && !num.contains('@');
+    }).toList();
+  }
+
+  /// Phone: hide flags (for current user) take priority.
+  /// For other users, check if MobileNo array has actual phone numbers.
   bool get hasPhone {
-    // If hide flags present, either must be "1" (visible) for phone to show
     if (hideWhatsnum != null || hideNum != null) {
       return hideWhatsnum == '1' || hideNum == '1';
     }
-    if (mobileNos != null && mobileNos!.isNotEmpty) return true;
-    return contactNumber != null && contactNumber!.isNotEmpty;
+    return _actualPhoneNumbers.isNotEmpty;
   }
 
-  /// Email button enabled when hide_mail toggle is ON (== "1").
-  /// Checks hide flag first, then EmailIds array, then EmailId fallback.
+  /// Email: hide flags take priority, then EmailIds array.
   bool get hasEmail {
     if (hideMail != null) return hideMail == '1';
-    if (emailIds != null && emailIds!.isNotEmpty) return true;
-    return emailId != null && emailId!.isNotEmpty;
+    return emailIds != null && emailIds!.isNotEmpty;
   }
 
-  /// First email from EmailIds array, or fallback to single EmailId field.
+  /// First email from EmailIds array.
   String? get firstEmail {
     if (emailIds != null && emailIds!.isNotEmpty) {
       return emailIds!.first.emailId;
     }
-    return emailId;
+    return null;
   }
 
-  /// First phone from MobileNo array, or fallback to ContactNumber field.
+  /// First actual phone number from MobileNo array.
   String? get firstPhone {
-    if (mobileNos != null && mobileNos!.isNotEmpty) {
-      return mobileNos!.first.mobileNo;
-    }
-    return contactNumber;
+    final phones = _actualPhoneNumbers;
+    if (phones.isNotEmpty) return phones.first.mobileNo;
+    return null;
   }
 
   @override
