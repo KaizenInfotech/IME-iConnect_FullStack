@@ -73,7 +73,11 @@ public class MemberController : ControllerBase
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadProfilePhoto([FromForm] TouchBase.API.Models.DTOs.Upload.ProfilePhotoFormRequest form)
     {
-        try { return Ok(await _memberService.UploadProfilePhoto(form.file!, new ProfilePhotoRequest { ProfileID = form.ProfileID })); }
+        try {
+            var uploadFile = form.profile_image ?? form.file;
+            if (uploadFile == null) return Ok(new { status = "1", message = "No file provided" });
+            return Ok(await _memberService.UploadProfilePhoto(uploadFile, new ProfilePhotoRequest { ProfileID = form.ProfileID, GrpID = form.GrpID }));
+        }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
 

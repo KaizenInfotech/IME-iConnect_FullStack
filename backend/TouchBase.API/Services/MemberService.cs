@@ -205,21 +205,27 @@ public class MemberService : IMemberService
 
     public async Task<object> UploadProfilePhoto(IFormFile file, ProfilePhotoRequest request)
     {
-        var profileId = int.TryParse(request.ProfileID, out var pid) ? pid : 0;
-        var profile = await _db.MemberProfiles.FindAsync(profileId);
-        if (profile == null) return new { status = "1", message = "Profile not found" };
+        // Proxy multipart upload to live API
+        var client = _httpClientFactory.CreateClient();
+        var liveUrl = $"https://api.imeiconnect.com/api/Member/UploadProfilePhoto?ProfileID={request.ProfileID}&GrpID={request.GrpID}&Type=profile";
+        var httpReq = new HttpRequestMessage(HttpMethod.Post, liveUrl);
+        httpReq.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
 
-        var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-        var uploadPath = Path.Combine("wwwroot", "uploads", "profile");
-        Directory.CreateDirectory(uploadPath);
-        var filePath = Path.Combine(uploadPath, fileName);
-        await using var stream = new FileStream(filePath, FileMode.Create);
-        await file.CopyToAsync(stream);
+        var content = new MultipartFormDataContent();
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        ms.Position = 0;
+        var fileContent = new ByteArrayContent(ms.ToArray());
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+        content.Add(fileContent, "profile_image", file.FileName ?? "image.jpg");
+        content.Add(new StringContent(request.ProfileID ?? ""), "ProfileID");
+        content.Add(new StringContent(request.GrpID ?? ""), "GrpID");
+        content.Add(new StringContent("profile"), "Type");
+        httpReq.Content = content;
 
-        profile.ProfilePic = $"/uploads/profile/{fileName}";
-        profile.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
-        return new { status = "0", message = "success", profilePic = profile.ProfilePic };
+        var response = await client.SendAsync(httpReq);
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
     }
 
     public async Task<object> GetBodList(BodListRequest request)

@@ -35,6 +35,9 @@ public class AddAlbumPhotoFormRequest
 
 public class ProfilePhotoFormRequest
 {
+    public IFormFile? profile_image { get; set; }
     public IFormFile? file { get; set; }
     public string? ProfileID { get; set; }
+    public string? GrpID { get; set; }
+    public string? Type { get; set; }
 }

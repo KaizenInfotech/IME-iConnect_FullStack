@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TouchBase.API")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+80227e3e53d6a4f5ad5eada0a2f62d37e1d6bd27")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+82397812820206ea84e2a7b519b620bbfa6011f5")]
 [assembly: System.Reflection.AssemblyProductAttribute("TouchBase.API")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TouchBase.API")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

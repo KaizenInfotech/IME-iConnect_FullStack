@@ -87,29 +87,65 @@ public class AuthService : IAuthService
         var profile = user.MemberProfiles.FirstOrDefault();
         var grpMember = profile?.GroupMemberships.FirstOrDefault();
 
-        // Fetch grpid1 from live API welcome screen (org/national admin group)
-        // grpid1 = first group from GetWelcomeScreen, which is the org-level group
+        // Forward OTP verification to live API so the device gets registered there.
+        // This prevents "session expired" errors when proxied APIs check device identity.
+        // Also fetch grpid1 from the live API response (org/national admin group).
         string? liveGrpid1 = null;
         try
         {
             var client = _httpClientFactory.CreateClient();
-            var liveReq = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Login/GetWelcomeScreen");
-            liveReq.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
-            liveReq.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+
+            // 1. Forward PostOTP to live API to register this device
+            var liveOtpReq = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Login/PostOTP");
+            liveOtpReq.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+            liveOtpReq.Content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
-                ["masterUID"] = user.Id.ToString()
+                ["mobileNo"] = request.mobileNo ?? "",
+                ["deviceToken"] = request.deviceToken ?? "",
+                ["countryCode"] = request.countryCode ?? "",
+                ["deviceName"] = request.deviceName ?? "",
+                ["imeiNo"] = request.imeiNo ?? "",
+                ["versionNo"] = request.versionNo ?? "",
+                ["loginType"] = request.loginType ?? ""
             });
-            var liveResp = await client.SendAsync(liveReq);
-            var liveJson = await liveResp.Content.ReadAsStringAsync();
-            using var doc = System.Text.Json.JsonDocument.Parse(liveJson);
-            if (doc.RootElement.TryGetProperty("WelcomeResult", out var wr) &&
-                wr.TryGetProperty("grpPartResults", out var parts) &&
-                parts.GetArrayLength() > 0)
+            var liveOtpResp = await client.SendAsync(liveOtpReq);
+            var liveOtpJson = await liveOtpResp.Content.ReadAsStringAsync();
+
+            // Try to extract grpid1 from PostOTP response
+            using var otpDoc = System.Text.Json.JsonDocument.Parse(liveOtpJson);
+            var otpRoot = otpDoc.RootElement;
+            // Live API wraps in LoginResult
+            var resultEl = otpRoot.TryGetProperty("LoginResult", out var lr) ? lr : otpRoot;
+            if (resultEl.TryGetProperty("ds", out var ds) &&
+                ds.TryGetProperty("Table", out var tbl) &&
+                tbl.GetArrayLength() > 0)
             {
-                var first = parts[0];
-                if (first.TryGetProperty("GrpPartResult", out var gpr) &&
-                    gpr.TryGetProperty("grpId", out var gid))
-                    liveGrpid1 = gid.ToString();
+                var firstRow = tbl[0];
+                if (firstRow.TryGetProperty("grpid1", out var g1))
+                    liveGrpid1 = g1.ToString();
+            }
+
+            // 2. Fallback: fetch from GetWelcomeScreen if PostOTP didn't return grpid1
+            if (string.IsNullOrEmpty(liveGrpid1))
+            {
+                var welcomeReq = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Login/GetWelcomeScreen");
+                welcomeReq.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+                welcomeReq.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["masterUID"] = user.Id.ToString()
+                });
+                var welcomeResp = await client.SendAsync(welcomeReq);
+                var welcomeJson = await welcomeResp.Content.ReadAsStringAsync();
+                using var welcomeDoc = System.Text.Json.JsonDocument.Parse(welcomeJson);
+                if (welcomeDoc.RootElement.TryGetProperty("WelcomeResult", out var wr) &&
+                    wr.TryGetProperty("grpPartResults", out var parts) &&
+                    parts.GetArrayLength() > 0)
+                {
+                    var first = parts[0];
+                    if (first.TryGetProperty("GrpPartResult", out var gpr) &&
+                        gpr.TryGetProperty("grpId", out var gid))
+                        liveGrpid1 = gid.ToString();
+                }
             }
         }
         catch { /* fallback to local value */ }
