@@ -108,6 +108,7 @@ public class DeviceTokenRequest
 {
     public string? MobileNumber { get; set; }
     public string? DeviceToken { get; set; }
+    public string? Platform { get; set; }
 }
 
 public class SubGroupRequest

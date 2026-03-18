@@ -69,6 +69,9 @@ builder.Services.AddScoped<ILeaderboardService, LeaderboardService>();
 builder.Services.AddScoped<IWebLinkService, WebLinkService>();
 builder.Services.AddScoped<IPastPresidentService, PastPresidentService>();
 builder.Services.AddScoped<IMerService, MerService>();
+builder.Services.AddScoped<IFcmService, FcmService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<ISmsService, SmsService>();
 
 // --- Controllers (JSON only, no views) ---
 builder.Services.AddControllers()

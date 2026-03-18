@@ -9,8 +9,9 @@ namespace TouchBase.API.Services;
 public class EventService : IEventService
 {
     private readonly AppDbContext _db;
+    private readonly INotificationService _notificationService;
     private const int PageSize = 25;
-    public EventService(AppDbContext db) => _db = db;
+    public EventService(AppDbContext db, INotificationService notificationService) { _db = db; _notificationService = notificationService; }
 
     public async Task<EventListResponse> GetEventList(EventListRequest request)
     {
@@ -111,6 +112,28 @@ public class EventService : IEventService
         ev.ProjectName = request.Projectname; ev.Link = request.reglink;
         ev.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+
+        // Send push notification to group members for new events
+        if (eventId == 0 && grpId > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _notificationService.SendGroupNotification(
+                        grpId, "Event",
+                        request.evntTitle ?? "New Event",
+                        request.evntDesc ?? "A new event has been created",
+                        new Dictionary<string, string>
+                        {
+                            ["eventId"] = ev.Id.ToString(),
+                            ["eventTitle"] = request.evntTitle ?? ""
+                        });
+                }
+                catch { /* don't fail event creation if notification fails */ }
+            });
+        }
+
         return new { status = "0", message = "success" };
     }
 

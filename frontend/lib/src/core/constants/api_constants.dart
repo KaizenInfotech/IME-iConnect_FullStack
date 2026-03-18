@@ -6,10 +6,16 @@ class ApiConstants {
   ApiConstants._();
 
   // ─── BASE URL ───────────────────────────────────────────
-  // Android emulator uses 10.0.2.2 to reach the host machine's localhost
-  static final String baseUrl = Platform.isAndroid
-      ? 'http://10.0.2.2:5050/api/'
-      : 'http://localhost:5050/api/';
+  // Physical device: use Mac's local IP (both platforms)
+  // Simulator/Emulator: Android uses 10.0.2.2, iOS uses localhost
+  static const String _localIp = '192.168.1.14';
+  static const bool _usePhysicalDevice = true; // Set to false for simulator/emulator
+
+  static final String baseUrl = _usePhysicalDevice
+      ? 'http://$_localIp:5050/api/'
+      : Platform.isAndroid
+          ? 'http://10.0.2.2:5050/api/'
+          : 'http://localhost:5050/api/';
 
   // ─── STATIC WEB PAGES ──────────────────────────────────
   static const String termsAndConditionsUrl =

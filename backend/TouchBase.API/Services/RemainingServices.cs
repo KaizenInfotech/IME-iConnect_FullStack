@@ -54,7 +54,13 @@ public class DashboardService : IDashboardService
 
     public async Task<NotificationCountResponse> GetNotificationCount(string groupId, string memberProfileId)
     {
-        var count = await _db.Notifications.CountAsync(n => n.ReadStatus != "read");
+        var profileId = int.TryParse(memberProfileId, out var pid) ? pid : 0;
+        var profile = await _db.MemberProfiles.FirstOrDefaultAsync(mp => mp.Id == profileId);
+        var userId = profile?.UserId ?? 0;
+
+        var count = userId > 0
+            ? await _db.Notifications.CountAsync(n => n.UserId == userId && n.ReadStatus != "Read")
+            : 0;
         return new NotificationCountResponse { status = "0", message = "success", notificationCount = count.ToString() };
     }
 
@@ -248,7 +254,41 @@ public class GroupService : IGroupService
     }
     public async Task<object> GetMobilePopup(PopupRequest request) { await Task.CompletedTask; return new { status = "0", message = "success", data = new List<object>() }; }
     public async Task<object> UpdateMobilePopupFlag(UpdatePopupRequest request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
-    public async Task<object> UpdateDeviceTokenNumber(DeviceTokenRequest request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
+    public async Task<object> UpdateDeviceTokenNumber(DeviceTokenRequest request)
+    {
+        if (string.IsNullOrEmpty(request.MobileNumber) || string.IsNullOrEmpty(request.DeviceToken))
+            return new { status = "1", message = "Missing mobile number or device token" };
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.MobileNo == request.MobileNumber);
+        if (user == null)
+            return new { status = "1", message = "User not found" };
+
+        // Update or insert device token
+        var existing = await _db.DeviceTokens.FirstOrDefaultAsync(dt => dt.UserId == user.Id && dt.Token == request.DeviceToken);
+        if (existing != null)
+        {
+            existing.Platform = request.Platform ?? existing.Platform;
+            existing.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            _db.DeviceTokens.Add(new Models.Entities.DeviceToken
+            {
+                UserId = user.Id,
+                Token = request.DeviceToken,
+                Platform = request.Platform ?? "android",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+        }
+
+        // Also update user's device token field
+        user.DeviceToken = request.DeviceToken;
+        user.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return new { status = "0", message = "success" };
+    }
     public async Task<object> GetAssistanceGov(AssistanceGovRequest request) { await Task.CompletedTask; return new { status = "0", message = "success", ShowHideMonthlyReportModule = "0" }; }
 }
 
@@ -374,7 +414,8 @@ public class AnnouncementService : IAnnouncementService
 public class DocumentService : IDocumentService
 {
     private readonly AppDbContext _db;
-    public DocumentService(AppDbContext db) => _db = db;
+    private readonly INotificationService _notificationService;
+    public DocumentService(AppDbContext db, INotificationService notificationService) { _db = db; _notificationService = notificationService; }
 
     public async Task<DocumentListResponse> GetDocumentList(DocumentListRequest request)
     {
@@ -395,6 +436,24 @@ public class DocumentService : IDocumentService
         await file.CopyToAsync(stream);
         var doc = new Document { GroupId = grpId, DocTitle = docTitle, DocType = Path.GetExtension(file.FileName), DocURL = $"/uploads/documents/{fileName}", CreatedBy = pid };
         _db.Documents.Add(doc); await _db.SaveChangesAsync();
+
+        // Send push notification for new document
+        if (grpId > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _notificationService.SendGroupNotification(
+                        grpId, "Document",
+                        docTitle ?? "New Document",
+                        $"A new document '{docTitle}' has been shared",
+                        new Dictionary<string, string> { ["docId"] = doc.Id.ToString() });
+                }
+                catch { }
+            });
+        }
+
         return new { status = "0", message = "success" };
     }
 
@@ -414,7 +473,8 @@ public class DocumentService : IDocumentService
 public class EbulletinService : IEbulletinService
 {
     private readonly AppDbContext _db;
-    public EbulletinService(AppDbContext db) => _db = db;
+    private readonly INotificationService _notificationService;
+    public EbulletinService(AppDbContext db, INotificationService notificationService) { _db = db; _notificationService = notificationService; }
 
     public async Task<EbulletinListResponse> GetYearWiseList(EbulletinListRequest request)
     {
@@ -429,6 +489,24 @@ public class EbulletinService : IEbulletinService
         var grpId = int.TryParse(request.grpID, out var gid) ? gid : 0;
         var eb = new Ebulletin { GroupId = grpId, EbulletinTitle = request.ebulletinTitle, EbulletinLink = request.ebulletinlink, EbulletinType = request.ebulletinType, EbulletinFileId = request.ebulletinfileid, PublishDate = request.publishDate, ExpiryDate = request.expiryDate, SendSMSAll = request.sendSMSAll, CreatedBy = int.TryParse(request.memID, out var m) ? m : 0 };
         _db.Ebulletins.Add(eb); await _db.SaveChangesAsync();
+
+        // Send push notification for new newsletter
+        if (grpId > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _notificationService.SendGroupNotification(
+                        grpId, "Ebulletin",
+                        request.ebulletinTitle ?? "New Newsletter",
+                        $"A new newsletter '{request.ebulletinTitle}' has been published",
+                        new Dictionary<string, string> { ["ebulletinId"] = eb.Id.ToString() });
+                }
+                catch { }
+            });
+        }
+
         return new { status = "0", message = "success" };
     }
 }

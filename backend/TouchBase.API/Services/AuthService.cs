@@ -15,19 +15,52 @@ public class AuthService : IAuthService
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ISmsService _smsService;
 
-    public AuthService(AppDbContext db, IConfiguration config, IHttpClientFactory httpClientFactory)
+    public AuthService(AppDbContext db, IConfiguration config, IHttpClientFactory httpClientFactory, ISmsService smsService)
     {
         _db = db;
         _config = config;
         _httpClientFactory = httpClientFactory;
+        _smsService = smsService;
     }
 
     public async Task<LoginResponse> RequestOtp(LoginRequest request)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.MobileNo == request.mobileNo);
-        var otp = new Random().Next(1000, 9999).ToString();
+        // Forward to live API — it sends the SMS and returns the OTP
+        string? liveOtp = null;
+        string? liveStatus = null;
+        string? liveMessage = null;
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            var liveReq = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Login/UserLogin");
+            liveReq.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+            liveReq.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["mobileNo"] = request.mobileNo ?? "",
+                ["deviceToken"] = request.deviceToken ?? "",
+                ["countryCode"] = request.countryCode ?? "1",
+                ["loginType"] = request.loginType ?? ""
+            });
+            var liveResp = await client.SendAsync(liveReq);
+            var liveJson = await liveResp.Content.ReadAsStringAsync();
 
+            using var doc = System.Text.Json.JsonDocument.Parse(liveJson);
+            var root = doc.RootElement;
+            // Live API wraps in LoginResult
+            var result = root.TryGetProperty("LoginResult", out var lr) ? lr : root;
+            liveStatus = result.TryGetProperty("status", out var s) ? s.ToString() : null;
+            liveMessage = result.TryGetProperty("message", out var m) ? m.ToString() : null;
+            liveOtp = result.TryGetProperty("otp", out var o) ? o.ToString() : null;
+        }
+        catch { /* fallback to local OTP generation */ }
+
+        // Use live OTP if available, otherwise generate locally
+        var otp = !string.IsNullOrEmpty(liveOtp) && liveOtp != "0" ? liveOtp : new Random().Next(1000, 9999).ToString();
+
+        // Save/update user locally
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.MobileNo == request.mobileNo);
         if (user == null)
         {
             user = new User
@@ -49,10 +82,26 @@ public class AuthService : IAuthService
         }
         await _db.SaveChangesAsync();
 
+        // If live API failed, try sending SMS directly as fallback
+        if (string.IsNullOrEmpty(liveOtp) || liveOtp == "0")
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _smsService.SendOtp(
+                        request.mobileNo ?? "",
+                        request.countryCode ?? "1",
+                        otp);
+                }
+                catch { }
+            });
+        }
+
         return new LoginResponse
         {
-            status = "0",
-            message = "success",
+            status = liveStatus == "1" ? "1" : "0",
+            message = liveStatus == "1" ? (liveMessage ?? "failed") : "success",
             otp = otp,
             isexists = user.IsRegistered ? "1" : "0",
             masterUID = user.Id.ToString()
