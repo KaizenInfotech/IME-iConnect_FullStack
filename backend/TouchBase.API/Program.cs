@@ -72,6 +72,7 @@ builder.Services.AddScoped<IMerService, MerService>();
 builder.Services.AddScoped<IFcmService, FcmService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ISmsService, SmsService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // --- Controllers (JSON only, no views) ---
 builder.Services.AddControllers()

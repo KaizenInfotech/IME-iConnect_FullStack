@@ -30,6 +30,9 @@ class AuthProvider extends ChangeNotifier {
   String? _mobileNumber;
   String? _countryCode;
   String? _loginType;
+  bool _needsForceUpdate = false;
+  String? _forceUpdateStoreUrl;
+  String? _latestVersion;
 
   LoginResult? get loginResult => _loginResult;
   LoginTable? get userSession => _userSession;
@@ -38,6 +41,9 @@ class AuthProvider extends ChangeNotifier {
   String? get error => _error;
   bool get isOtpSent => _isOtpSent;
   String? get mobileNumber => _mobileNumber;
+  bool get needsForceUpdate => _needsForceUpdate;
+  String? get forceUpdateStoreUrl => _forceUpdateStoreUrl;
+  String? get latestVersion => _latestVersion;
 
   // ═══════════════════════════════════════════════════════
   // LOGIN — iOS: signinTapped()
@@ -167,6 +173,10 @@ class AuthProvider extends ChangeNotifier {
               _userSession = table.first;
               await _saveLoginDataToLocal();
             }
+
+            // Force update check: compare app version with server's latestVersion
+            _checkForceUpdate(versionNo);
+
             _error = null;
             return true;
           } else {
@@ -496,6 +506,7 @@ class AuthProvider extends ChangeNotifier {
   Future<String> _getVersionNumber() async {
     try {
       final info = await PackageInfo.fromPlatform();
+      debugPrint(info.version);
       return info.version;
     } catch (_) {
       return '';
@@ -507,6 +518,37 @@ class AuthProvider extends ChangeNotifier {
     final stripped = code.replaceAll('+', '').trim();
     if (stripped == '91') return '1';
     return stripped;
+  }
+
+  /// Compare current app version with server's latestVersion.
+  /// If app version < server version, set force update flag.
+  void _checkForceUpdate(String currentVersion) {
+    final serverVersion = _loginResult?.latestVersion;
+    final storeUrl = _loginResult?.forceUpdateStoreUrl;
+
+    if (serverVersion == null || serverVersion.isEmpty) return;
+
+    if (_isVersionSmaller(currentVersion, serverVersion)) {
+      _needsForceUpdate = true;
+      _latestVersion = serverVersion;
+      _forceUpdateStoreUrl = storeUrl;
+      notifyListeners();
+    }
+  }
+
+  /// Returns true if v1 < v2 (e.g., "1.0.0" < "2.5" → true)
+  bool _isVersionSmaller(String v1, String v2) {
+    final parts1 = v1.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final parts2 = v2.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+
+    final maxLen = parts1.length > parts2.length ? parts1.length : parts2.length;
+    for (var i = 0; i < maxLen; i++) {
+      final p1 = i < parts1.length ? parts1[i] : 0;
+      final p2 = i < parts2.length ? parts2[i] : 0;
+      if (p1 < p2) return true;
+      if (p1 > p2) return false;
+    }
+    return false; // versions are equal
   }
 
   /// Clear error state.

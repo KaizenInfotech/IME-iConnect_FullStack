@@ -157,7 +157,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
       // Android: SplashScreenActivity — member removal, force re-login
       case 'RemoveMember':
-        context.go('/splash');
+        context.go('/login');
         break;
 
       default:

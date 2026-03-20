@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ import '../../../core/widgets/common_loader.dart';
 import '../../../core/widgets/common_toast.dart';
 import '../../notifications/providers/notifications_provider.dart';
 import '../models/group_result.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/group_provider.dart';
 import '../widgets/group_switcher.dart';
@@ -122,10 +124,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.dispose();
   }
 
-  /// Android: onResume — refresh notification badge + check session expiry.
+  /// Android: onResume — refresh notification badge + check session expiry + force update.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _checkForceUpdate();
       _checkSessionOnResume();
       _refreshNotificationCount();
       // Android: displayNotificationCount — also refresh local unread count
@@ -142,10 +145,113 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  /// Check force update by comparing local app version with server's latestVersion.
+  Future<void> _checkForceUpdate() async {
+    try {
+      // First check if AuthProvider already has the result (from OTP flow)
+      final authProvider = context.read<AuthProvider>();
+      if (authProvider.needsForceUpdate) {
+        _showForceUpdateDialog(authProvider.forceUpdateStoreUrl);
+        return;
+      }
+
+      // If landing directly on dashboard (already logged in), call API to get version
+      final info = await PackageInfo.fromPlatform();
+      final currentVersion = info.version;
+
+      final response = await ApiClient.instance.postUrlEncoded(
+        ApiConstants.loginPostOtp,
+        body: {
+          'mobileNo': LocalStorage.instance.getString('session_mobile') ?? '',
+          'deviceToken': await SecureStorage.instance.getDeviceToken() ?? '',
+          'countryCode': LocalStorage.instance.getString('session_country_code') ?? '1',
+          'deviceName': Platform.isIOS ? 'iOS' : 'Android',
+          'imeiNo': '',
+          'versionNo': currentVersion,
+          'loginType': LocalStorage.instance.getString('session_login_type') ?? '',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body);
+        final data = body['LoginResult'] as Map<String, dynamic>? ?? body;
+        final latestVersion = data['latestVersion']?.toString() ?? '';
+        final storeUrl = data['forceUpdateStoreUrl']?.toString() ?? '';
+
+        if (latestVersion.isNotEmpty && _isVersionSmaller(currentVersion, latestVersion)) {
+          if (mounted) _showForceUpdateDialog(storeUrl);
+        }
+      }
+    } catch (e) {
+      debugPrint('Force update check failed: $e');
+    }
+  }
+
+  /// Returns true if v1 < v2 (e.g., "1.0.0" < "2.5" → true)
+  bool _isVersionSmaller(String v1, String v2) {
+    final parts1 = v1.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final parts2 = v2.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final maxLen = parts1.length > parts2.length ? parts1.length : parts2.length;
+    for (var i = 0; i < maxLen; i++) {
+      final p1 = i < parts1.length ? parts1[i] : 0;
+      final p2 = i < parts2.length ? parts2[i] : 0;
+      if (p1 < p2) return true;
+      if (p1 > p2) return false;
+    }
+    return false;
+  }
+
+  /// Non-dismissible force update dialog — redirects to App Store / Play Store.
+  void _showForceUpdateDialog(String? storeUrl) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text(
+            'Update Required',
+            style: TextStyle(
+              fontFamily: AppTextStyles.fontFamily,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: const Text(
+            'A new version is available. Please update the app to continue.',
+            style: TextStyle(
+              fontFamily: AppTextStyles.fontFamily,
+              fontSize: 14,
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                if (storeUrl != null && storeUrl.isNotEmpty) {
+                  launchUrl(
+                    Uri.parse(storeUrl),
+                    mode: LaunchMode.externalApplication,
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Update Now'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Push to a route and check session expiry when returning to dashboard.
   Future<void> _pushAndCheckSession(String path, {Object? extra}) async {
     await context.push(path, extra: extra);
-    if (mounted) _checkSessionOnResume();
+    if (mounted) {
+      _checkForceUpdate();
+      _checkSessionOnResume();
+    }
   }
 
   /// Android: sessionExpiredPopup() — non-dismissible dialog
@@ -164,7 +270,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 await LocalStorage.instance.clearSessionData();
                 await SecureStorage.instance.clearAll();
                 if (mounted) {
-                  context.go('/splash');
+                  context.go('/login');
                 }
               },
               child: const Text('OK'),
@@ -242,6 +348,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     notiProvider.refreshUnreadCount();
 
     CommonLoader.dismiss(context);
+
+    // Check force update on dashboard landing
+    _checkForceUpdate();
 
     // Android: checkSessionExpired() — check after dashboard fully loads
     _checkSessionOnResume();

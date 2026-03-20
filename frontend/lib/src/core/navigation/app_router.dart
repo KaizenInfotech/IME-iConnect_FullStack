@@ -295,7 +295,7 @@ class AppRouter {
         ],
       ),
 
-      // ─── Events ─────────────────────────────────────────────
+      // ─── Events ────────────────────���────────────────────────
       GoRoute(
         path: '/events',
         builder: (_, state) {
@@ -1071,7 +1071,7 @@ class AppRouter {
 
     // Not logged in → force to login (unless already on a public route)
     if (!isLoggedIn && !isPublicRoute) {
-      return '/splash';
+      return '/login';
     }
 
     // Already logged in + on splash/login page → go straight to dashboard

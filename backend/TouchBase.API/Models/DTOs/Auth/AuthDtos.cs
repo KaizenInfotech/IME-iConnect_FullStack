@@ -56,6 +56,10 @@ public class LoginResponse
     public string? isMemeberNotRegistered { get; set; }
     public LoginDs? ds { get; set; }
     public string? token { get; set; }
+    /// Latest app version from server — frontend compares with local versionNo for force update
+    public string? latestVersion { get; set; }
+    /// App Store / Play Store URL for force update redirect
+    public string? forceUpdateStoreUrl { get; set; }
 }
 
 /// Flutter expects: { Table: [ { masterUID, grpid0, grpid1, ... } ] }

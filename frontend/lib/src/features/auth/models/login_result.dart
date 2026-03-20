@@ -13,6 +13,8 @@ class LoginResult extends BaseModel {
   final String? isMemberNotRegistered;
   final String? token;
   final LoginResultData? loginResultData;
+  final String? latestVersion;
+  final String? forceUpdateStoreUrl;
 
   LoginResult({
     this.status,
@@ -23,6 +25,8 @@ class LoginResult extends BaseModel {
     this.isMemberNotRegistered,
     this.token,
     this.loginResultData,
+    this.latestVersion,
+    this.forceUpdateStoreUrl,
   });
 
   factory LoginResult.fromJson(Map<String, dynamic> json) {
@@ -40,6 +44,8 @@ class LoginResult extends BaseModel {
       loginResultData: data['ds'] != null || data['status'] != null
           ? LoginResultData.fromJson(data)
           : null,
+      latestVersion: BaseModel.safeString(data['latestVersion']),
+      forceUpdateStoreUrl: BaseModel.safeString(data['forceUpdateStoreUrl']),
     );
   }
 

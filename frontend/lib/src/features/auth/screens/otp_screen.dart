@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -105,12 +106,61 @@ class _OtpScreenState extends State<OtpScreen> {
     CommonLoader.dismiss(context);
 
     if (success) {
-      // Navigate directly to dashboard, clearing the navigation stack
-      context.go('/dashboard');
+      // Check force update before navigating
+      if (authProvider.needsForceUpdate) {
+        _showForceUpdateDialog(authProvider);
+      } else {
+        context.go('/dashboard');
+      }
     } else {
       final error = authProvider.error ?? 'Verification failed';
       CommonToast.error(context, error);
     }
+  }
+
+  /// Non-dismissible force update dialog — redirects to App Store / Play Store.
+  void _showForceUpdateDialog(AuthProvider authProvider) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text(
+            'Update Required',
+            style: TextStyle(
+              fontFamily: AppTextStyles.fontFamily,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: const Text(
+            'A new version is available. Please update the app to continue.',
+            style: TextStyle(
+              fontFamily: AppTextStyles.fontFamily,
+              fontSize: 14,
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                final url = authProvider.forceUpdateStoreUrl;
+                if (url != null && url.isNotEmpty) {
+                  launchUrl(
+                    Uri.parse(url),
+                    mode: LaunchMode.externalApplication,
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.textOnPrimary,
+              ),
+              child: const Text('Update Now'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showAlert(String message) {

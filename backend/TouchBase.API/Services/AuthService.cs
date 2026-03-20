@@ -16,13 +16,15 @@ public class AuthService : IAuthService
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ISmsService _smsService;
+    private readonly IEmailService _emailService;
 
-    public AuthService(AppDbContext db, IConfiguration config, IHttpClientFactory httpClientFactory, ISmsService smsService)
+    public AuthService(AppDbContext db, IConfiguration config, IHttpClientFactory httpClientFactory, ISmsService smsService, IEmailService emailService)
     {
         _db = db;
         _config = config;
         _httpClientFactory = httpClientFactory;
         _smsService = smsService;
+        _emailService = emailService;
     }
 
     public async Task<LoginResponse> RequestOtp(LoginRequest request)
@@ -97,6 +99,45 @@ public class AuthService : IAuthService
                 catch { }
             });
         }
+
+        // Send OTP via email (fire-and-forget, matching old API's LoginController.sendMail)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Fetch member's email and club name from DB
+                var memberEmail = user.Email;
+                var memberName = $"{user.FirstName} {user.LastName}".Trim();
+                var clubName = "";
+
+                if (string.IsNullOrEmpty(memberEmail))
+                {
+                    // Try from member profile
+                    var profile = await _db.MemberProfiles
+                        .FirstOrDefaultAsync(mp => mp.UserId == user.Id);
+                    if (profile != null)
+                        memberEmail = profile.MemberEmail;
+                }
+
+                if (!string.IsNullOrEmpty(memberEmail))
+                {
+                    // Get club name from group membership
+                    var grpMember = await _db.GroupMembers
+                        .Include(gm => gm.Group)
+                        .FirstOrDefaultAsync(gm => gm.MemberProfile.UserId == user.Id && gm.IsActive);
+                    if (grpMember?.Group != null)
+                        clubName = grpMember.Group.GrpName ?? "";
+
+                    await _emailService.SendOtpEmail(
+                        memberEmail,
+                        otp,
+                        memberName,
+                        request.mobileNo ?? "",
+                        clubName);
+                }
+            }
+            catch { }
+        });
 
         return new LoginResponse
         {
@@ -222,7 +263,11 @@ public class AuthService : IAuthService
             masterUID = user.Id.ToString(),
             isexists = "1",
             token = token,
-            ds = new LoginDs { Table = new List<LoginTable> { loginTable } }
+            ds = new LoginDs { Table = new List<LoginTable> { loginTable } },
+            latestVersion = _config["AppVersion:LatestVersion"] ?? "1.0.0",
+            forceUpdateStoreUrl = string.Equals(request.deviceName, "iOS", StringComparison.OrdinalIgnoreCase)
+                ? _config["AppVersion:IosStoreUrl"] ?? ""
+                : _config["AppVersion:AndroidStoreUrl"] ?? ""
         };
     }
 

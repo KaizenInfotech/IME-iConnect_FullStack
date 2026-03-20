@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Port of Android SplashScreenActivity.
-/// Full-screen splash image matching IME(I) App splashscreen.jpg.
-/// Auto-navigates to login after a short delay.
+/// Full-screen splash using the cropped splashscreen.jpg image.
+/// Matches the iOS LaunchScreen.storyboard exactly so the native → Flutter
+/// transition is seamless (one continuous splash).
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -15,8 +15,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // Auto-navigate after 3 seconds (matching Android splash behavior)
-    Future.delayed(const Duration(seconds: 3), () {
+    Future.delayed(const Duration(milliseconds: 1500), () {
       if (!mounted) return;
       context.go('/login');
     });
