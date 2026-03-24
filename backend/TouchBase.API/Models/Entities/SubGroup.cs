@@ -19,6 +19,11 @@ public class SubGroupMember
     public int Id { get; set; }
     public int SubGroupId { get; set; }
     public int MemberProfileId { get; set; }
+    public string? MemberName { get; set; }
+    public string? Designation { get; set; }
+    public string? MobileNumber { get; set; }
+    public string? EmailId { get; set; }
+    public string? Branch { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation

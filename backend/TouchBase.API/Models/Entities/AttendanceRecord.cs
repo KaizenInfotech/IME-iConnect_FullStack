@@ -8,6 +8,8 @@ public class AttendanceRecord
     public string? AttendanceDate { get; set; }
     public string? AttendanceTime { get; set; }
     public string? AttendanceDesc { get; set; }
+    public int? MemberCount { get; set; }
+    public int? VisitorCount { get; set; }
     public int CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

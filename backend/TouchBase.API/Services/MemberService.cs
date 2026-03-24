@@ -136,17 +136,46 @@ public class MemberService : IMemberService
 
     public async Task<object> GetMemberListSync(MemberSyncRequest request)
     {
-        var client = _httpClientFactory.CreateClient();
-        var httpReq = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Member/GetMemberListSync");
-        httpReq.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
-        httpReq.Content = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["grpID"] = request.grpID ?? "",
-            ["updatedOn"] = request.updatedOn ?? "1970-01-01 00:00:00"
-        });
-        var response = await client.SendAsync(httpReq);
-        var json = await response.Content.ReadAsStringAsync();
-        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+        var grpId = int.TryParse(request.grpID, out var gid) ? gid : 0;
+        var members = await _db.GroupMembers.Include(gm => gm.MemberProfile).ThenInclude(mp => mp.User)
+            .Include(gm => gm.MemberProfile).ThenInclude(mp => mp.Addresses)
+            .Include(gm => gm.Group)
+            .Where(gm => gm.GroupId == grpId)
+            .Select(gm => new
+            {
+                masterID = gm.MemberProfile.UserId.ToString(),
+                grpID = gm.GroupId.ToString(),
+                GrpName = gm.Group.GrpName,
+                profileID = gm.MemberProfileId.ToString(),
+                memberName = gm.MemberProfile.User.FirstName ?? gm.MemberProfile.MemberName,
+                middleName = gm.MemberProfile.User.MiddleName ?? "",
+                lastName = gm.MemberProfile.User.LastName ?? "",
+                memberEmail = gm.MemberProfile.MemberEmail,
+                hide_mail = gm.MemberProfile.HideMail ?? "0",
+                memberMobile = (gm.MemberProfile.CountryCode != null ? "+" + gm.MemberProfile.CountryCode + " " : "") + gm.MemberProfile.MemberMobile,
+                hide_whatsnum = gm.MemberProfile.HideWhatsnum ?? "0",
+                secondry_mobile_no = gm.MemberProfile.SecondaryMobileNo ?? "",
+                hide_num = gm.MemberProfile.HideNum ?? "0",
+                memberCountry = gm.MemberProfile.MemberCountry,
+                profilePic = gm.MemberProfile.ProfilePic,
+                member_date_of_birth = gm.MemberProfile.Dob ?? "",
+                member_date_of_wedding = gm.MemberProfile.Doa ?? "",
+                blood_Group = gm.MemberProfile.BloodGroup,
+                GradeId = "",
+                MembershipGrade = gm.MemberProfile.MembershipGrade,
+                Category = gm.MemberProfile.Category,
+                CategoryId = gm.MemberProfile.CategoryId ?? "0",
+                member_IMEI_id = gm.MemberProfile.ImeiMembershipId,
+                CompanyName = gm.MemberProfile.CompanyName,
+                Club_Name = (string?)null,
+                address = gm.MemberProfile.Addresses.Select(a => a.Address).FirstOrDefault(),
+                city = gm.MemberProfile.Addresses.Select(a => a.City).FirstOrDefault(),
+                state_id = "",
+                state_name = gm.MemberProfile.Addresses.Select(a => a.State).FirstOrDefault(),
+                pincode = gm.MemberProfile.Addresses.Select(a => a.Pincode).FirstOrDefault(),
+                addressResult = gm.MemberProfile.Addresses.Select(a => new { a.Address, a.City, state_name = a.State, a.Pincode }).ToList()
+            }).ToListAsync();
+        return new { status = "0", message = "success", curDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), zipFilePath = "", MemberDetail = new { NewMemberList = members, UpdatedMemberList = new List<object>(), DeletedMemberList = "" } };
     }
 
     public async Task<UpdateResponse> UpdateProfileDetails(UpdatePersonalDetailsRequest request) =>
@@ -205,87 +234,50 @@ public class MemberService : IMemberService
 
     public async Task<object> UploadProfilePhoto(IFormFile file, ProfilePhotoRequest request)
     {
-        // Proxy multipart upload to live API
-        var client = _httpClientFactory.CreateClient();
-        var liveUrl = $"https://api.imeiconnect.com/api/Member/UploadProfilePhoto?ProfileID={request.ProfileID}&GrpID={request.GrpID}&Type=profile";
-        var httpReq = new HttpRequestMessage(HttpMethod.Post, liveUrl);
-        httpReq.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
-
-        var content = new MultipartFormDataContent();
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms);
-        ms.Position = 0;
-        var fileContent = new ByteArrayContent(ms.ToArray());
-        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
-        content.Add(fileContent, "profile_image", file.FileName ?? "image.jpg");
-        content.Add(new StringContent(request.ProfileID ?? ""), "ProfileID");
-        content.Add(new StringContent(request.GrpID ?? ""), "GrpID");
-        content.Add(new StringContent("profile"), "Type");
-        httpReq.Content = content;
-
-        var response = await client.SendAsync(httpReq);
-        var json = await response.Content.ReadAsStringAsync();
-        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+        var pid = int.TryParse(request.ProfileID, out var p) ? p : 0;
+        var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
+        var path = Path.Combine("wwwroot", "uploads", "profile"); Directory.CreateDirectory(path);
+        await using var stream = new FileStream(Path.Combine(path, fileName), FileMode.Create);
+        await file.CopyToAsync(stream);
+        var photoUrl = $"/uploads/profile/{fileName}";
+        var profile = await _db.MemberProfiles.FindAsync(pid);
+        if (profile != null) { profile.ProfilePic = photoUrl; profile.UpdatedAt = DateTime.UtcNow; await _db.SaveChangesAsync(); }
+        return new { status = "0", message = "success", ProfileImage = photoUrl };
     }
 
     public async Task<object> GetBodList(BodListRequest request)
     {
-        var client = _httpClientFactory.CreateClient();
-        var httpReq = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Member/GetBODList");
-        httpReq.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
-        httpReq.Content = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["grpId"] = request.grpId ?? "",
-            ["searchText"] = request.searchText ?? "",
-            ["YearFilter"] = request.YearFilter ?? ""
-        });
-        var response = await client.SendAsync(httpReq);
-        var json = await response.Content.ReadAsStringAsync();
-        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+        var grpId = int.TryParse(request.grpId, out var gid) ? gid : 0;
+        var query = _db.MemberProfiles
+            .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
+            .Where(x => x.gm.GroupId == grpId && x.mp.Designation != null && x.mp.Designation != "");
+        if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
+        var members = await query.Select(x => new { masterUID = x.mp.UserId.ToString(), grpID = x.gm.GroupId.ToString(), profileID = x.mp.Id.ToString(), memberName = x.mp.MemberName, membermobile = x.mp.MemberMobile, MemberDesignation = x.mp.Designation, pic = x.mp.ProfilePic, Email = x.mp.MemberEmail }).ToListAsync();
+        return new { TBGetBODResult = new { status = "0", message = "success", BODResult = members } };
     }
 
     public async Task<object> GetGoverningCouncil(GoverningCouncilRequest request)
     {
-        // Proxy to live API — governing council is national data
-        var client = _httpClientFactory.CreateClient();
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Member/GetGoverningCouncl")
-        {
-            Content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["searchText"] = request.searchText ?? "",
-                ["YearFilter"] = request.YearFilter ?? ""
-            })
-        };
-        httpRequest.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
-        var response = await client.SendAsync(httpRequest);
-        var json = await response.Content.ReadAsStringAsync();
-        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+        var query = _db.MemberProfiles
+            .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
+            .Where(x => x.gm.GroupId == 31185 && x.mp.Designation != null && x.mp.Designation != "");
+        if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
+        var members = await query.Select(x => new { BOD_pkID = x.mp.Id, ProfileID = x.mp.Id, FK_Master_Designation_ID = 0, PhoneNo = x.mp.MemberMobile, Email = x.mp.MemberEmail, MemberName = x.mp.MemberName, masterUID = x.mp.UserId, sr_NO = 0, grpID = 31185, pic = x.mp.ProfilePic, MemberDesignation = x.mp.Designation, membermobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile }).ToListAsync();
+        return new { status = "0", message = "success", Result = new { Table = members } };
     }
 
     public async Task<UpdateResponse> UpdateMember(UpdateMemberRequest request)
     {
-        var client = _httpClientFactory.CreateClient();
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.imeiconnect.com/api/Member/UpdateMemebr");
-        httpRequest.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
-        var formData = new Dictionary<string, string>();
-        if (request.mobile_num_hide != null) formData["mobile_num_hide"] = request.mobile_num_hide;
-        if (request.secondary_num_hide != null) formData["secondary_num_hide"] = request.secondary_num_hide;
-        if (request.email_hide != null) formData["email_hide"] = request.email_hide;
-        if (request.DOB != null) formData["DOB"] = request.DOB;
-        if (request.DOA != null) formData["DOA"] = request.DOA;
-        if (request.company_name != null) formData["company_name"] = request.company_name;
-        if (request.MemProfileId != null) formData["MemProfileId"] = request.MemProfileId;
-        httpRequest.Content = new FormUrlEncodedContent(formData);
-        var response = await client.SendAsync(httpRequest);
-        var json = await response.Content.ReadAsStringAsync();
-        try
-        {
-            return System.Text.Json.JsonSerializer.Deserialize<UpdateResponse>(json)!;
-        }
-        catch
-        {
-            return new UpdateResponse { status = response.IsSuccessStatusCode ? "0" : "1", message = response.IsSuccessStatusCode ? "success" : "Failed" };
-        }
+        var pid = int.TryParse(request.MemProfileId, out var p) ? p : 0;
+        var profile = await _db.MemberProfiles.FindAsync(pid);
+        if (profile == null) return new UpdateResponse { status = "1", message = "Not found" };
+        if (request.mobile_num_hide != null) profile.MobileNumHide = request.mobile_num_hide;
+        if (request.secondary_num_hide != null) profile.SecondaryNumHide = request.secondary_num_hide;
+        if (request.email_hide != null) profile.EmailHide = request.email_hide;
+        if (request.company_name != null) profile.CompanyName = request.company_name;
+        profile.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return new UpdateResponse { status = "0", message = "success" };
     }
 
     public async Task<UpdateResponse> UpdateProfilePersonalDetails(UpdatePersonalDetailsRequest request)
@@ -306,12 +298,39 @@ public class MemberService : IMemberService
 
     public async Task<object> GetMemberDetails(string? memProfileId, string? grpId)
     {
-        var client = _httpClientFactory.CreateClient();
-        var url = $"https://api.imeiconnect.com/api/Member/GetMemberDetails?MemProfileId={memProfileId}&GrpID={grpId}";
-        var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.TryAddWithoutValidation("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
-        var response = await client.SendAsync(req);
-        var json = await response.Content.ReadAsStringAsync();
-        return System.Text.Json.JsonSerializer.Deserialize<object>(json)!;
+        var uid = int.TryParse(memProfileId, out var u) ? u : 0;
+        var gid = int.TryParse(grpId, out var g) ? g : 0;
+
+        // Find profile by UserId (memProfileId is actually masterUID/UserId)
+        var mp = await _db.MemberProfiles
+            .Include(m => m.Addresses)
+            .Include(m => m.User)
+            .FirstOrDefaultAsync(m => m.UserId == uid && _db.GroupMembers.Any(gm => gm.MemberProfileId == m.Id && gm.GroupId == gid));
+
+        if (mp == null)
+            mp = await _db.MemberProfiles.Include(m => m.Addresses).Include(m => m.User).FirstOrDefaultAsync(m => m.Id == uid);
+
+        if (mp == null) return new { TBGetSponsorReferredResult = new { status = "1", message = "Not found", Result = new { Table = new List<object>() } } };
+
+        var grp = await _db.Groups.FindAsync(gid);
+        var addr = mp.Addresses.FirstOrDefault();
+
+        return new { TBGetSponsorReferredResult = new { status = "0", message = "success", Result = new { Table = new[] { new {
+            MemProfileId = mp.Id, GrpID = gid, Chaptr_Brnch_Name = grp?.GrpName,
+            MemId = mp.UserId, First_Name = mp.User?.FirstName ?? mp.MemberName, Middle_Name = mp.User?.MiddleName ?? "",
+            Last_Name = mp.User?.LastName ?? "", Whatsapp_num = mp.WhatsappNum ?? mp.MemberMobile,
+            hide_whatsnum = int.TryParse(mp.HideWhatsnum, out var hw) ? hw : 0,
+            Secondry_num = mp.SecondaryMobileNo ?? "", hide_num = int.TryParse(mp.HideNum, out var hn) ? hn : 0,
+            member_email_id = mp.MemberEmail, hide_mail = int.TryParse(mp.HideMail, out var hm) ? hm : 0,
+            blood_Group = mp.BloodGroup, DOB = mp.Dob,
+            DOA = mp.Doa,
+            birthday = mp.Dob, annivarsary = mp.Doa,
+            member_profile_photo_path = mp.ProfilePic, Company_name = mp.CompanyName,
+            IMEI_Membership_Id = mp.ImeiMembershipId, MembershipGrade_Id = "",
+            Membership_Grade = mp.MembershipGrade, CategoryId = mp.CategoryId ?? "0",
+            CategoryName = mp.Category, Address = addr?.Address, City = addr?.City,
+            StateId = "", State = addr?.State, pincode = addr?.Pincode,
+            CountryId = "", Country = addr?.Country ?? mp.MemberCountry
+        } } } } };
     }
 }

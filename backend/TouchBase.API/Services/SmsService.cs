@@ -50,14 +50,14 @@ public class SmsService : ISmsService
     }
 
     /// <summary>
-    /// Send SMS via MDS SMS Gateway (National/India).
-    /// Matches old API: GlobalFuns.SendSMSAdd (line 1282 in GlobalFuns.cs)
-    /// GET https://mdssend.in/api.php?username=...&apikey=...&senderid=...&route=OTP&mobile=...&text=...
+    /// Send SMS via FoxxSMS Gateway (National/India).
+    /// Matches old API: GlobalFuns.SendSMSAdd (line 222 in GlobalFuns.cs)
+    /// POST https://foxxsms.net/sms/submitsms.jsp with form params
     /// </summary>
     private async Task<bool> SendNationalSms(string mobileNo, string message)
     {
         var smsConfig = _config.GetSection("Sms:National");
-        var url = smsConfig["Url"] ?? "https://mdssend.in/api.php";
+        var url = smsConfig["Url"] ?? "https://foxxsms.net/sms/submitsms.jsp";
         var username = smsConfig["Username"];
         var apiKey = smsConfig["ApiKey"];
         var senderId = smsConfig["SenderId"] ?? "IMEICC";
@@ -70,18 +70,18 @@ public class SmsService : ISmsService
             return false;
         }
 
-        var encodedMessage = HttpUtility.UrlEncode(message);
-        var requestUrl = $"{url}?username={username}&apikey={apiKey}&senderid={senderId}&route=OTP&mobile={mobileNo}&text={encodedMessage}&tempid={templateId}&entityid={entityId}";
-
         try
         {
             var client = _httpClientFactory.CreateClient();
+            var encodedMessage = HttpUtility.UrlEncode(message);
+            var requestUrl = $"{url}?user={username}&key={apiKey}&mobile={mobileNo}&message={encodedMessage}&senderid={senderId}&accusage=1&tempid={templateId}&entityid={entityId}";
             var response = await client.GetAsync(requestUrl);
             var responseText = await response.Content.ReadAsStringAsync();
 
             _logger.LogInformation("SMS National response: {Response}", responseText);
 
-            if (responseText.Contains("Message Submitted successfully", StringComparison.OrdinalIgnoreCase) ||
+            if (responseText.Contains("sent", StringComparison.OrdinalIgnoreCase) ||
+                responseText.Contains("success", StringComparison.OrdinalIgnoreCase) ||
                 responseText.Contains("OK", StringComparison.OrdinalIgnoreCase))
             {
                 return true;

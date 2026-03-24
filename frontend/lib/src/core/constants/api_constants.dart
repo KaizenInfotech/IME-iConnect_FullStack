@@ -9,7 +9,7 @@ class ApiConstants {
   // Physical device: use Mac's local IP (both platforms)
   // Simulator/Emulator: Android uses 10.0.2.2, iOS uses localhost
   static const String _localIp = '192.168.1.40';
-  static const bool _usePhysicalDevice = true; // Set to false for simulator/emulator
+  static const bool _usePhysicalDevice = false; // Set to false for simulator/emulator
 
   static final String baseUrl = _usePhysicalDevice
       ? 'http://$_localIp:5050/api/'
