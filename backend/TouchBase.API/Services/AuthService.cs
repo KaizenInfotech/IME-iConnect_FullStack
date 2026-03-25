@@ -29,6 +29,15 @@ public class AuthService : IAuthService
 
     public async Task<LoginResponse> RequestOtp(LoginRequest request)
     {
+        // Check if country code is allowed (configured in appsettings.json)
+        var allowedCodes = _config.GetSection("AllowedCountryCodes").Get<string[]>() ?? new[] { "1", "91" };
+        var cc = request.countryCode?.Trim();
+        if (!string.IsNullOrEmpty(cc) && !allowedCodes.Contains(cc))
+        {
+            var msg = _config["ForeignNumberMessage"] ?? "International numbers are not supported. Please use an Indian mobile number.";
+            return new LoginResponse { status = "1", message = msg };
+        }
+
         // Generate OTP locally
         var otp = new Random().Next(1000, 9999).ToString();
 
