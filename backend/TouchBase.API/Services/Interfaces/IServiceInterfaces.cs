@@ -1,3 +1,4 @@
+using TouchBase.API.Controllers;
 using TouchBase.API.Models.DTOs.Announcement;
 using TouchBase.API.Models.DTOs.Attendance;
 using TouchBase.API.Models.DTOs.Auth;
@@ -31,6 +32,8 @@ public interface IAuthService
     Task<object> GetWelcomeGroups(WelcomeScreenRequest request);
     Task<object> GetMemberDetails(MemberDetailsRequest request);
     Task<object> Register(RegistrationRequest request);
+    Task<object> WebLogin(string mobileNo, string password, string countryCode = "1");
+    Task<object> ForgotPassword(string mobileNo);
 }
 
 public interface IDashboardService
@@ -76,6 +79,8 @@ public interface IGroupService
     Task<object> UpdateMobilePopupFlag(UpdatePopupRequest request);
     Task<object> UpdateDeviceTokenNumber(DeviceTokenRequest request);
     Task<object> GetAssistanceGov(AssistanceGovRequest request);
+    Task<object> DeleteGroup(string groupId);
+    Task<object> DeleteSubGroup(string subGroupId);
 }
 
 public interface IMemberService
@@ -95,6 +100,7 @@ public interface IMemberService
     Task<UpdateResponse> UpdateProfilePersonalDetails(UpdatePersonalDetailsRequest request);
     Task<object> SaveProfile(SaveProfileRequest request);
     Task<object> GetMemberDetails(string? memProfileId, string? grpId);
+    Task<object> DeleteMember(string memberProfileId);
 }
 
 public interface IEventService
@@ -104,6 +110,7 @@ public interface IEventService
     Task<object> AddEvent(AddEventRequest request);
     Task<AnswerEventResponse> AnswerEvent(AnswerEventRequest request);
     Task<SmsCountResponse> GetSmsCountDetails(SmsCountRequest request);
+    Task<object> DeleteEvent(string eventId);
 }
 
 public interface IAnnouncementService
@@ -111,6 +118,7 @@ public interface IAnnouncementService
     Task<object> GetAnnouncementList(AnnouncementListRequest request);
     Task<object> GetAnnouncementDetails(AnnouncementDetailRequest request);
     Task<object> AddAnnouncement(AddAnnouncementRequest request);
+    Task<object> DeleteAnnouncement(string announId);
 }
 
 public interface IDocumentService
@@ -138,6 +146,9 @@ public interface IGalleryService
     Task<object> GetYear(TouchBase.API.Models.DTOs.Gallery.YearRequest request);
     Task<object> FillYearList(object request);
     Task<object> GetMerList(TouchBase.API.Models.DTOs.Gallery.MerListRequest request);
+    Task<object> AddMer(AddMerRequest request);
+    Task<object> UpdateMer(UpdateMerRequest request);
+    Task<object> DeleteMer(string merId);
 }
 
 public interface IAttendanceService
@@ -147,6 +158,7 @@ public interface IAttendanceService
     Task<object> AttendanceDelete(AttendanceDeleteRequest request);
     Task<object> GetAttendanceMemberDetails(AttendanceMemberDetailRequest request);
     Task<object> GetAttendanceVisitorsDetails(AttendanceMemberDetailRequest request);
+    Task<object> AttendanceAddEdit(AttendanceAddEditRequest request);
 }
 
 public interface ICelebrationsService
@@ -221,6 +233,9 @@ public interface IWebLinkService
 public interface IPastPresidentService
 {
     Task<object> GetPastPresidentsList(PastPresidentRequest request);
+    Task<object> AddPastPresident(AddPastPresidentRequest request);
+    Task<object> UpdatePastPresident(UpdatePastPresidentRequest request);
+    Task<object> DeletePastPresident(string pastPresidentId);
 }
 
 public interface IMerService

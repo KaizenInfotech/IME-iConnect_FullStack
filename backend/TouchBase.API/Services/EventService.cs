@@ -175,4 +175,16 @@ public class EventService : IEventService
     {
         return await Task.FromResult(new SmsCountResponse { status = "0", message = "success", smscount = "100" });
     }
+
+    public async Task<object> DeleteEvent(string eventId)
+    {
+        var id = int.TryParse(eventId, out var eid) ? eid : 0;
+        var ev = await _db.Events.FindAsync(id);
+        if (ev == null) return new { status = "1", message = "Event not found" };
+        var responses = await _db.EventResponses.Where(r => r.EventId == id).ToListAsync();
+        _db.EventResponses.RemoveRange(responses);
+        _db.Events.Remove(ev);
+        await _db.SaveChangesAsync();
+        return new { status = "0", message = "success" };
+    }
 }

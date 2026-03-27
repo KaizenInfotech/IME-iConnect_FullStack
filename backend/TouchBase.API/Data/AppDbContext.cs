@@ -91,6 +91,9 @@ public class AppDbContext : DbContext
     // Feedback
     public DbSet<Feedback> Feedbacks => Set<Feedback>();
 
+    // Web Admins
+    public DbSet<WebAdmin> WebAdmins => Set<WebAdmin>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -480,6 +483,9 @@ public class AppDbContext : DbContext
              .HasForeignKey(f => f.GroupId)
              .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // ─── WebAdmin ───
+        modelBuilder.Entity<WebAdmin>(e => { e.ToTable("web_admins"); });
 
         // ─── DeviceToken ───
         modelBuilder.Entity<Models.Entities.DeviceToken>(e =>

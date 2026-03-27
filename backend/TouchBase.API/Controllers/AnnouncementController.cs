@@ -31,4 +31,13 @@ public class AnnouncementController : ControllerBase
         try { return Ok(await _announcementService.AddAnnouncement(request)); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("DeleteAnnouncement")]
+    public async Task<IActionResult> DeleteAnnouncement([FromBody] DeleteAnnouncementRequest request)
+    {
+        try { return Ok(await _announcementService.DeleteAnnouncement(request.announID ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
 }
+
+public class DeleteAnnouncementRequest { public string? announID { get; set; } }

@@ -238,4 +238,20 @@ public class GroupController : ControllerBase
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
 
+    [HttpPost("DeleteGroup")]
+    public async Task<IActionResult> DeleteGroup([FromBody] DeleteGroupRequest request)
+    {
+        try { return Ok(await _groupService.DeleteGroup(request.groupId ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+
+    [HttpPost("DeleteSubGroup")]
+    public async Task<IActionResult> DeleteSubGroup([FromBody] DeleteSubGroupRequest request)
+    {
+        try { return Ok(await _groupService.DeleteSubGroup(request.subGroupId ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
 }
+
+public class DeleteGroupRequest { public string? groupId { get; set; } }
+public class DeleteSubGroupRequest { public string? subGroupId { get; set; } }
