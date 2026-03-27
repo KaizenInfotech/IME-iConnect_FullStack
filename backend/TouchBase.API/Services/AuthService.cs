@@ -261,4 +261,87 @@ public class AuthService : IAuthService
             signingCredentials: creds);
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
+    public async Task<object> WebLogin(string mobileNo, string password, string countryCode = "1")
+    {
+        var admin = await _db.WebAdmins.FirstOrDefaultAsync(a => a.MobileNo == mobileNo && a.Password == password && a.IsActive);
+        if (admin == null)
+            return new { status = "1", message = "Invalid mobile number or password" };
+
+        var user = await _db.Users
+            .Include(u => u.MemberProfiles)
+                .ThenInclude(mp => mp.GroupMemberships)
+                    .ThenInclude(gm => gm.Group)
+            .FirstOrDefaultAsync(u => u.Id == admin.UserId);
+
+        if (user == null)
+            return new { status = "1", message = "User not found" };
+
+        var token = GenerateJwtToken(user);
+        var profile = user.MemberProfiles.FirstOrDefault();
+        var groups = user.MemberProfiles.SelectMany(mp => mp.GroupMemberships).ToList();
+
+        return new
+        {
+            status = "0",
+            message = "success",
+            token,
+            masterUID = user.Id.ToString(),
+            profileId = profile?.Id.ToString() ?? "0",
+            name = $"{user.FirstName} {user.LastName}".Trim(),
+            mobile = user.MobileNo,
+            email = user.Email ?? profile?.MemberEmail,
+            role = admin.UserRole ?? "Admin",
+            groupId = groups.FirstOrDefault()?.GroupId.ToString(),
+            groupName = groups.FirstOrDefault()?.Group?.GrpName,
+            profilePic = user.ProfileImage ?? profile?.ProfilePic,
+            groups = groups.Select(g => new { grpId = g.GroupId, grpName = g.Group?.GrpName }).ToList()
+        };
+    }
+
+    public async Task<object> ForgotPassword(string mobileNo)
+    {
+        // Find admin by mobile number
+        var admin = await _db.WebAdmins.FirstOrDefaultAsync(a => a.MobileNo == mobileNo && a.IsActive);
+        if (admin == null)
+            return new { status = "1", message = "No such mobile number exists" };
+
+        // Find user and email
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == admin.UserId);
+        if (user == null)
+            return new { status = "1", message = "User not found" };
+
+        var email = user.Email;
+        if (string.IsNullOrEmpty(email))
+        {
+            var profile = await _db.MemberProfiles.FirstOrDefaultAsync(mp => mp.UserId == user.Id);
+            email = profile?.MemberEmail;
+        }
+
+        if (string.IsNullOrEmpty(email))
+            return new { status = "1", message = "Please register your email address in IME I Connect. Contact Help Desk." };
+
+        // Send password to email
+        var memberName = $"{user.FirstName} {user.LastName}".Trim();
+        var password = admin.Password;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var subject = "IMEIconnect - Your Forgotten Password";
+                var body = $"<p>Dear <strong>{memberName}</strong>,</p>"
+                    + $"<p>We have received a request to resend your forgotten password. Your password for IME I Connect is as follows:</p>"
+                    + $"<p><strong>Username:</strong> {mobileNo}</p>"
+                    + $"<p><strong>Password:</strong> {password}</p>"
+                    + $"<p>Please log in using this password, and we strongly recommend that you change your password after logging in for security reasons.</p>"
+                    + $"<p>Thank you for using our system.</p>"
+                    + $"<p><em>Best regards,<br/><strong>TEAM IME I CONNECT</strong></em></p>";
+                await _emailService.SendEmail(email, subject, body);
+            }
+            catch { }
+        });
+
+        return new { status = "0", message = "Password sent successfully on your registered email address" };
+    }
 }

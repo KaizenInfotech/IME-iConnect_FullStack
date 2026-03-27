@@ -122,12 +122,28 @@ public class MemberService : IMemberService
     public async Task<UpdateResponse> UpdateProfile(UpdateProfileRequest request)
     {
         var profileId = int.TryParse(request.ProfileId, out var pid) ? pid : 0;
-        var profile = await _db.MemberProfiles.FindAsync(profileId);
+        var profile = await _db.MemberProfiles.Include(p => p.User).FirstOrDefaultAsync(p => p.Id == profileId);
         if (profile == null) return new UpdateResponse { status = "1", message = "Profile not found" };
 
-        if (request.memberName != null) profile.MemberName = request.memberName;
+        if (request.memberName != null)
+        {
+            profile.MemberName = request.memberName;
+            // Also update User table FirstName/LastName
+            if (profile.User != null)
+            {
+                var parts = request.memberName.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
+                profile.User.FirstName = parts.Length > 0 ? parts[0] : "";
+                profile.User.MiddleName = parts.Length > 2 ? parts[1] : "";
+                profile.User.LastName = parts.Length > 2 ? parts[2] : (parts.Length > 1 ? parts[1] : "");
+                profile.User.UpdatedAt = DateTime.UtcNow;
+            }
+        }
         if (request.memberMobile != null) profile.MemberMobile = request.memberMobile;
-        if (request.memberEmailid != null) profile.MemberEmail = request.memberEmailid;
+        if (request.memberEmailid != null)
+        {
+            profile.MemberEmail = request.memberEmailid;
+            if (profile.User != null) profile.User.Email = request.memberEmailid;
+        }
         if (request.ProfilePicPath != null) profile.ProfilePic = request.ProfilePicPath;
         profile.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -332,5 +348,30 @@ public class MemberService : IMemberService
             StateId = "", State = addr?.State, pincode = addr?.Pincode,
             CountryId = "", Country = addr?.Country ?? mp.MemberCountry
         } } } } };
+    }
+
+    public async Task<object> DeleteMember(string memberProfileId)
+    {
+        var pid = int.TryParse(memberProfileId, out var p) ? p : 0;
+        var profile = await _db.MemberProfiles.FindAsync(pid);
+        if (profile == null) return new { status = "1", message = "Member not found" };
+
+        // Remove group memberships
+        var memberships = await _db.GroupMembers.Where(gm => gm.MemberProfileId == pid).ToListAsync();
+        _db.GroupMembers.RemoveRange(memberships);
+
+        // Remove family members
+        var family = await _db.FamilyMembers.Where(fm => fm.MemberProfileId == pid).ToListAsync();
+        _db.FamilyMembers.RemoveRange(family);
+
+        // Remove addresses
+        var addresses = await _db.AddressDetails.Where(a => a.MemberProfileId == pid).ToListAsync();
+        _db.AddressDetails.RemoveRange(addresses);
+
+        // Remove profile
+        _db.MemberProfiles.Remove(profile);
+        await _db.SaveChangesAsync();
+
+        return new { status = "0", message = "success" };
     }
 }

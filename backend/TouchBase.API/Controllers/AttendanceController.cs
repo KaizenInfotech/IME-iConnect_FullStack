@@ -45,4 +45,35 @@ public class AttendanceController : ControllerBase
         try { return Ok(await _attendanceService.GetAttendanceVisitorsDetails(request)); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("AttendanceAddEdit")]
+    public async Task<IActionResult> AttendanceAddEdit([FromBody] AttendanceAddEditRequest request)
+    {
+        try { return Ok(await _attendanceService.AttendanceAddEdit(request)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+}
+
+public class AttendanceAddEditRequest
+{
+    public string? AttendanceID { get; set; }
+    public string? GroupId { get; set; }
+    public string? AttendanceName { get; set; }
+    public string? AttendanceDesc { get; set; }
+    public string? AttendanceDate { get; set; }
+    public List<AttendanceMemberInput>? Members { get; set; }
+    public List<AttendanceVisitorInput>? Visitors { get; set; }
+}
+
+public class AttendanceMemberInput
+{
+    public string? Id { get; set; }
+    public string? MemberProfileId { get; set; }
+    public string? Type { get; set; }
+}
+
+public class AttendanceVisitorInput
+{
+    public string? VisitorName { get; set; }
+    public string? Type { get; set; }
 }

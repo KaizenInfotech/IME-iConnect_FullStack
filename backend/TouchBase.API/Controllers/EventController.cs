@@ -45,4 +45,13 @@ public class EventController : ControllerBase
         try { return Ok(await _eventService.GetSmsCountDetails(request)); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("DeleteEvent")]
+    public async Task<IActionResult> DeleteEvent([FromBody] DeleteEventRequest request)
+    {
+        try { return Ok(await _eventService.DeleteEvent(request.eventId ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
 }
+
+public class DeleteEventRequest { public string? eventId { get; set; } }

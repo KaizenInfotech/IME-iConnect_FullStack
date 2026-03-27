@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TouchBase.API.Controllers;
 using TouchBase.API.Data;
 using TouchBase.API.Models.DTOs.Announcement;
 using TouchBase.API.Models.DTOs.Attendance;
@@ -102,8 +103,33 @@ public class GroupService : IGroupService
 
     public async Task<CreateGroupResponse> CreateGroup(CreateGroupRequest request)
     {
-        var group = new Group { GrpName = request.grpName, GrpImageId = request.grpImageID, GrpType = request.grpType, GrpCategory = request.grpCategory, Address1 = request.addrss1, Address2 = request.addrss2, City = request.city, State = request.state, Pincode = request.pincode, Country = request.country, Email = request.emailid, Mobile = request.mobile, Website = request.website, Other = request.other };
-        _db.Groups.Add(group);
+        var existingId = int.TryParse(request.grpId, out var eid) ? eid : 0;
+        Group group;
+        if (existingId > 0)
+        {
+            group = await _db.Groups.FindAsync(existingId) ?? new Group();
+            if (group.Id == 0) { _db.Groups.Add(group); }
+        }
+        else
+        {
+            group = new Group();
+            _db.Groups.Add(group);
+        }
+        if (request.grpName != null) group.GrpName = request.grpName;
+        if (request.grpImageID != null) group.GrpImageId = request.grpImageID;
+        if (request.grpType != null) group.GrpType = request.grpType;
+        if (request.grpCategory != null) group.GrpCategory = request.grpCategory;
+        if (request.addrss1 != null) group.Address1 = request.addrss1;
+        if (request.addrss2 != null) group.Address2 = request.addrss2;
+        if (request.city != null) group.City = request.city;
+        if (request.state != null) group.State = request.state;
+        if (request.pincode != null) group.Pincode = request.pincode;
+        if (request.country != null) group.Country = request.country;
+        if (request.emailid != null) group.Email = request.emailid;
+        if (request.mobile != null) group.Mobile = request.mobile;
+        if (request.website != null) group.Website = request.website;
+        if (request.other != null) group.Other = request.other;
+        group.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return new CreateGroupResponse { status = "0", message = "success", grdId = group.Id.ToString() };
     }
@@ -294,6 +320,30 @@ public class GroupService : IGroupService
         return new { status = "0", message = "success" };
     }
     public async Task<object> GetAssistanceGov(AssistanceGovRequest request) { await Task.CompletedTask; return new { status = "0", message = "success", ShowHideMonthlyReportModule = "0" }; }
+
+    public async Task<object> DeleteGroup(string groupId)
+    {
+        var gid = int.TryParse(groupId, out var g) ? g : 0;
+        var group = await _db.Groups.FindAsync(gid);
+        if (group == null) return new { status = "1", message = "Group not found" };
+        var members = await _db.GroupMembers.Where(gm => gm.GroupId == gid).ToListAsync();
+        _db.GroupMembers.RemoveRange(members);
+        _db.Groups.Remove(group);
+        await _db.SaveChangesAsync();
+        return new { status = "0", message = "success" };
+    }
+
+    public async Task<object> DeleteSubGroup(string subGroupId)
+    {
+        var sgid = int.TryParse(subGroupId, out var s) ? s : 0;
+        var sg = await _db.SubGroups.FindAsync(sgid);
+        if (sg == null) return new { status = "1", message = "Sub group not found" };
+        var members = await _db.SubGroupMembers.Where(m => m.SubGroupId == sgid).ToListAsync();
+        _db.SubGroupMembers.RemoveRange(members);
+        _db.SubGroups.Remove(sg);
+        await _db.SaveChangesAsync();
+        return new { status = "0", message = "success" };
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -350,6 +400,16 @@ public class AnnouncementService : IAnnouncementService
         var memId = int.TryParse(request.memID, out var mid) ? mid : 0;
         var ann = new Announcement { GroupId = grpId, AnnounTitle = request.announTitle, AnnounDesc = request.announceDEsc, AnnounType = request.annType, AnnounImg = request.announImg, PublishDate = request.publishDate, ExpiryDate = request.expiryDate, SendSMSNonSmartPh = request.sendSMSNonSmartPh, SendSMSAll = request.sendSMSAll, ModuleId = request.moduleId, RegLink = request.reglink, InputIds = request.inputIDs, RepeatDates = request.AnnouncementRepeatDates, IsSubGrpAdmin = request.isSubGrpAdmin, CreatedBy = memId };
         _db.Announcements.Add(ann); await _db.SaveChangesAsync();
+        return new { status = "0", message = "success" };
+    }
+
+    public async Task<object> DeleteAnnouncement(string announId)
+    {
+        var id = int.TryParse(announId, out var aid) ? aid : 0;
+        var ann = await _db.Announcements.FindAsync(id);
+        if (ann == null) return new { status = "1", message = "Not found" };
+        _db.Announcements.Remove(ann);
+        await _db.SaveChangesAsync();
         return new { status = "0", message = "success" };
     }
 }
@@ -561,6 +621,41 @@ public class GalleryService : IGalleryService
             .Select(m => new { GrpID = m.GroupId, MER_ID = m.Id, Title = m.Title, Link = m.Link, File_Path = m.FilePath, publish_date = m.PublishDate, expiry_date = m.ExpiryDate, FinanceYear = m.FinanceYear }).ToListAsync();
         return new { TBMERListResult = new { status = "0", message = "success", MERListResult = items } };
     }
+
+    public async Task<object> AddMer(AddMerRequest request)
+    {
+        var gid = int.TryParse(request.GroupId, out var g) ? g : 31185;
+        var mer = new MerItem { GroupId = gid, Title = request.Title, Link = request.Link, FilePath = request.FilePath, PublishDate = request.PublishDate, ExpiryDate = request.ExpiryDate, FinanceYear = request.FinanceYear, TransType = request.TransType ?? "1" };
+        _db.MerItems.Add(mer);
+        await _db.SaveChangesAsync();
+        return new { status = "0", message = "success" };
+    }
+
+    public async Task<object> UpdateMer(UpdateMerRequest request)
+    {
+        var id = int.TryParse(request.MER_ID, out var mid) ? mid : 0;
+        var mer = await _db.MerItems.FindAsync(id);
+        if (mer == null) return new { status = "1", message = "Not found" };
+        if (request.Title != null) mer.Title = request.Title;
+        if (request.Link != null) mer.Link = request.Link;
+        if (request.FilePath != null) mer.FilePath = request.FilePath;
+        if (request.PublishDate != null) mer.PublishDate = request.PublishDate;
+        if (request.ExpiryDate != null) mer.ExpiryDate = request.ExpiryDate;
+        if (request.FinanceYear != null) mer.FinanceYear = request.FinanceYear;
+        if (request.TransType != null) mer.TransType = request.TransType;
+        await _db.SaveChangesAsync();
+        return new { status = "0", message = "success" };
+    }
+
+    public async Task<object> DeleteMer(string merId)
+    {
+        var id = int.TryParse(merId, out var mid) ? mid : 0;
+        var mer = await _db.MerItems.FindAsync(id);
+        if (mer == null) return new { status = "1", message = "Not found" };
+        _db.MerItems.Remove(mer);
+        await _db.SaveChangesAsync();
+        return new { status = "0", message = "success" };
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -593,6 +688,61 @@ public class AttendanceService : IAttendanceService
         var id = int.TryParse(request.AttendanceID, out var aid) ? aid : 0;
         var ar = await _db.AttendanceRecords.FindAsync(id);
         if (ar != null) { _db.AttendanceRecords.Remove(ar); await _db.SaveChangesAsync(); }
+        return new { status = "0", message = "success" };
+    }
+
+    public async Task<object> AttendanceAddEdit(AttendanceAddEditRequest request)
+    {
+        var attId = int.TryParse(request.AttendanceID, out var aid) ? aid : 0;
+        var grpId = int.TryParse(request.GroupId, out var gid) ? gid : 0;
+
+        AttendanceRecord record;
+        if (attId > 0)
+        {
+            record = await _db.AttendanceRecords.FindAsync(attId) ?? new AttendanceRecord();
+            if (record.Id == 0) { record.GroupId = grpId; _db.AttendanceRecords.Add(record); }
+        }
+        else
+        {
+            record = new AttendanceRecord { GroupId = grpId };
+            _db.AttendanceRecords.Add(record);
+        }
+
+        record.AttendanceName = request.AttendanceName;
+        record.AttendanceDesc = request.AttendanceDesc;
+        record.AttendanceDate = request.AttendanceDate;
+        record.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+
+        // Update members
+        if (request.Members != null)
+        {
+            var existing = await _db.AttendanceMembers.Where(am => am.AttendanceRecordId == record.Id).ToListAsync();
+            _db.AttendanceMembers.RemoveRange(existing);
+            foreach (var m in request.Members)
+            {
+                var mpId = int.TryParse(m.MemberProfileId ?? m.Id, out var mp) ? mp : 0;
+                if (mpId > 0)
+                    _db.AttendanceMembers.Add(new AttendanceMember { AttendanceRecordId = record.Id, MemberProfileId = mpId, Type = m.Type ?? "Member" });
+            }
+            record.MemberCount = request.Members.Count;
+        }
+
+        // Update visitors
+        if (request.Visitors != null)
+        {
+            var existing = await _db.AttendanceVisitors.Where(av => av.AttendanceRecordId == record.Id).ToListAsync();
+            _db.AttendanceVisitors.RemoveRange(existing);
+            foreach (var v in request.Visitors)
+            {
+                if (!string.IsNullOrEmpty(v.VisitorName))
+                    _db.AttendanceVisitors.Add(new AttendanceVisitor { AttendanceRecordId = record.Id, VisitorName = v.VisitorName, Type = v.Type ?? "Visitor" });
+            }
+            record.VisitorCount = request.Visitors.Count;
+        }
+
+        await _db.SaveChangesAsync();
         return new { status = "0", message = "success" };
     }
 
@@ -981,6 +1131,38 @@ public class PastPresidentService : IPastPresidentService
         var presidents = await query.OrderBy(pp => pp.Id)
             .Select(pp => new { PastPresidentId = pp.Id.ToString(), MemberName = pp.MemberName, PhotoPath = pp.PhotoPath, TenureYear = pp.TenureYear }).ToListAsync();
         return new { TBPastPresidentListResult = new { status = "0", message = "success", updatedOn = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), TBPastPresidentList = new { newRecords = presidents, updatedRecords = new List<object>(), deletedRecords = "" } } };
+    }
+
+    public async Task<object> AddPastPresident(AddPastPresidentRequest request)
+    {
+        var grpId = int.TryParse(request.GroupId, out var gid) ? gid : 0;
+        var pp = new PastPresident { GroupId = grpId, MemberName = request.MemberName, PhotoPath = request.PhotoPath, TenureYear = request.TenureYear, Designation = request.Designation };
+        _db.PastPresidents.Add(pp);
+        await _db.SaveChangesAsync();
+        return new { status = "0", message = "success" };
+    }
+
+    public async Task<object> UpdatePastPresident(UpdatePastPresidentRequest request)
+    {
+        var ppId = int.TryParse(request.PastPresidentId, out var pid) ? pid : 0;
+        var pp = await _db.PastPresidents.FindAsync(ppId);
+        if (pp == null) return new { status = "1", message = "Not found" };
+        if (request.MemberName != null) pp.MemberName = request.MemberName;
+        if (request.PhotoPath != null) pp.PhotoPath = request.PhotoPath;
+        if (request.TenureYear != null) pp.TenureYear = request.TenureYear;
+        if (request.Designation != null) pp.Designation = request.Designation;
+        await _db.SaveChangesAsync();
+        return new { status = "0", message = "success" };
+    }
+
+    public async Task<object> DeletePastPresident(string pastPresidentId)
+    {
+        var ppId = int.TryParse(pastPresidentId, out var pid) ? pid : 0;
+        var pp = await _db.PastPresidents.FindAsync(ppId);
+        if (pp == null) return new { status = "1", message = "Not found" };
+        _db.PastPresidents.Remove(pp);
+        await _db.SaveChangesAsync();
+        return new { status = "0", message = "success" };
     }
 }
 

@@ -81,4 +81,54 @@ public class GalleryController : ControllerBase
         try { return Ok(await _galleryService.FillYearList(request)); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("AddMER")]
+    public async Task<IActionResult> AddMER([FromBody] AddMerRequest request)
+    {
+        try { return Ok(await _galleryService.AddMer(request)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+
+    [HttpPost("UpdateMER")]
+    public async Task<IActionResult> UpdateMER([FromBody] UpdateMerRequest request)
+    {
+        try { return Ok(await _galleryService.UpdateMer(request)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+
+    [HttpPost("DeleteMER")]
+    public async Task<IActionResult> DeleteMER([FromBody] DeleteMerRequest request)
+    {
+        try { return Ok(await _galleryService.DeleteMer(request.MER_ID ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+}
+
+public class AddMerRequest
+{
+    public string? GroupId { get; set; }
+    public string? Title { get; set; }
+    public string? Link { get; set; }
+    public string? FilePath { get; set; }
+    public string? PublishDate { get; set; }
+    public string? ExpiryDate { get; set; }
+    public string? FinanceYear { get; set; }
+    public string? TransType { get; set; }
+}
+
+public class UpdateMerRequest
+{
+    public string? MER_ID { get; set; }
+    public string? Title { get; set; }
+    public string? Link { get; set; }
+    public string? FilePath { get; set; }
+    public string? PublishDate { get; set; }
+    public string? ExpiryDate { get; set; }
+    public string? FinanceYear { get; set; }
+    public string? TransType { get; set; }
+}
+
+public class DeleteMerRequest
+{
+    public string? MER_ID { get; set; }
 }

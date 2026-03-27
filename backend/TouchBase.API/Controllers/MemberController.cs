@@ -124,4 +124,16 @@ public class MemberController : ControllerBase
         try { return Ok(await _memberService.SaveProfile(request)); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("DeleteMember")]
+    public async Task<IActionResult> DeleteMember([FromBody] DeleteMemberRequest request)
+    {
+        try { return Ok(await _memberService.DeleteMember(request.memberProfileId ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+}
+
+public class DeleteMemberRequest
+{
+    public string? memberProfileId { get; set; }
 }

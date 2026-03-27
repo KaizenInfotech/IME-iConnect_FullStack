@@ -51,4 +51,28 @@ public class LoginController : ControllerBase
         try { return Ok(await _authService.Register(request)); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [AllowAnonymous]
+    [HttpPost("WebLogin")]
+    public async Task<IActionResult> WebLogin([FromBody] WebLoginRequest request)
+    {
+        try { return Ok(await _authService.WebLogin(request.mobileNo ?? "", request.password ?? "", request.countryCode ?? "1")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+    [AllowAnonymous]
+    [HttpPost("ForgotPassword")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        try { return Ok(await _authService.ForgotPassword(request.mobileNo ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+}
+
+public class ForgotPasswordRequest { public string? mobileNo { get; set; } }
+
+public class WebLoginRequest
+{
+    public string? mobileNo { get; set; }
+    public string? password { get; set; }
+    public string? countryCode { get; set; }
 }
