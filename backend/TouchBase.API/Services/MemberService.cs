@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TouchBase.API.Controllers;
 using TouchBase.API.Data;
 using TouchBase.API.Models.DTOs.Member;
 using TouchBase.API.Models.Entities;
@@ -181,7 +182,7 @@ public class MemberService : IMemberService
                 MembershipGrade = gm.MemberProfile.MembershipGrade,
                 Category = gm.MemberProfile.Category,
                 CategoryId = gm.MemberProfile.CategoryId ?? "0",
-                member_IMEI_id = gm.MemberProfile.ImeiMembershipId,
+                member_IMEI_id = gm.MemberProfile.ImeiMembershipId ?? "",
                 CompanyName = gm.MemberProfile.CompanyName,
                 Club_Name = (string?)null,
                 address = gm.MemberProfile.Addresses.Select(a => a.Address).FirstOrDefault(),
@@ -210,8 +211,13 @@ public class MemberService : IMemberService
         }
         else
         {
-            addr = new AddressDetail { MemberProfileId = profileId };
-            _db.AddressDetails.Add(addr);
+            // Try to find existing address for this profile
+            addr = await _db.AddressDetails.FirstOrDefaultAsync(a => a.MemberProfileId == profileId);
+            if (addr == null)
+            {
+                addr = new AddressDetail { MemberProfileId = profileId };
+                _db.AddressDetails.Add(addr);
+            }
         }
 
         addr.AddressType = request.addressType; addr.Address = request.address; addr.City = request.city;
@@ -264,22 +270,320 @@ public class MemberService : IMemberService
     public async Task<object> GetBodList(BodListRequest request)
     {
         var grpId = int.TryParse(request.grpId, out var gid) ? gid : 0;
+        // Read from production DB using WebGetBODList stored procedure
+        try
+        {
+            var members = new List<object>();
+            using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            var yearFilter = !string.IsNullOrEmpty(request.YearFilter) ? request.YearFilter : $"{DateTime.Now.Year}-{DateTime.Now.Year}";
+            cmd.CommandText = "CALL WebGetBODList(@grpId, @search, @year)";
+            cmd.Parameters.AddWithValue("@grpId", grpId);
+            cmd.Parameters.AddWithValue("@search", request.searchText ?? "");
+            cmd.Parameters.AddWithValue("@year", yearFilter);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                members.Add(new
+                {
+                    BOD_pkID = reader["BOD_pkID"]?.ToString(),
+                    profileID = reader["FK_member_master_profile_id"]?.ToString(),
+                    sr_NO = reader["sr_NO"]?.ToString(),
+                    memberName = reader["member_name"]?.ToString()?.Trim(),
+                    MemberDesignation = reader["Designation_Name"]?.ToString(),
+                    membermobile = reader["PhoneNo"]?.ToString(),
+                    Email = reader["EmailID"]?.ToString(),
+                });
+            }
+            if (members.Count > 0)
+                return new { TBGetBODResult = new { status = "0", message = "success", BODResult = members } };
+        }
+        catch { }
+
+        // Fallback to local DB
         var query = _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Where(x => x.gm.GroupId == grpId && x.mp.Designation != null && x.mp.Designation != "");
         if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
-        var members = await query.Select(x => new { masterUID = x.mp.UserId.ToString(), grpID = x.gm.GroupId.ToString(), profileID = x.mp.Id.ToString(), memberName = x.mp.MemberName, membermobile = x.mp.MemberMobile, MemberDesignation = x.mp.Designation, pic = x.mp.ProfilePic, Email = x.mp.MemberEmail }).ToListAsync();
-        return new { TBGetBODResult = new { status = "0", message = "success", BODResult = members } };
+        var localMembers = await query.Select(x => new { masterUID = x.mp.UserId.ToString(), grpID = x.gm.GroupId.ToString(), profileID = x.mp.Id.ToString(), memberName = x.mp.MemberName, membermobile = x.mp.MemberMobile, MemberDesignation = x.mp.Designation, pic = x.mp.ProfilePic, Email = x.mp.MemberEmail }).ToListAsync();
+        return new { TBGetBODResult = new { status = "0", message = "success", BODResult = localMembers } };
     }
+
+    public async Task<object> ReorderBOD(List<ReorderItem> items)
+    {
+        try
+        {
+            using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
+            await conn.OpenAsync();
+            foreach (var item in items)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE bod_master SET BODorderNumber = @order WHERE BOD_PkID = @id AND COALESCE(Isdeleted,0)=0";
+                cmd.Parameters.AddWithValue("@order", item.DisplayOrder);
+                cmd.Parameters.AddWithValue("@id", item.MemberId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            return new { status = "0", message = "Reorder saved successfully" };
+        }
+        catch (Exception ex) { return new { status = "1", message = ex.Message }; }
+    }
+
+    private const string ProdConnStr = "server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True;Allow User Variables=true";
 
     public async Task<object> GetGoverningCouncil(GoverningCouncilRequest request)
     {
+        // Read from production DB (imei_production.bod_master) - same data as mobile app
+        try
+        {
+            var members = new List<object>();
+            using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            var sql = @"SELECT b.BOD_PkID, b.FK_member_master_profile_id as ProfileID, b.PhoneNo, b.EmailID as Email, b.YearFilter,
+                CASE WHEN mm.member_name IS NOT NULL
+                  THEN TRIM(REPLACE(CONCAT(COALESCE(mm.member_name,''), ' ', COALESCE(NULLIF(mm.middle_name,''),''), ' ', COALESCE(mm.last_name,'')), '  ', ' '))
+                  ELSE COALESCE(CONVERT(mp.MemberName USING utf8mb4), '')
+                END as MemberName,
+                COALESCE(m.fk_main_member_master_id, mp.UserId) as masterUID, b.FK_group_master_id as grpID,
+                COALESCE(mm.ProfilePic_Path, m.member_profile_photo_path, CONVERT(mp.ProfilePic USING utf8mb4)) as pic,
+                COALESCE(d.Designation, b.OtherDesignation, '') as MemberDesignation,
+                COALESCE(m.member_mobile_no, mm.member_mobile, CONVERT(mp.MemberMobile USING utf8mb4)) as membermobile,
+                b.fk_chapter_id as chapterId, COALESCE(cg.group_name, '') as chapterName
+                FROM bod_master b
+                LEFT JOIN member_master_profile m ON b.FK_member_master_profile_id = m.pk_member_master_profile_id
+                LEFT JOIN main_member_master mm ON m.fk_main_member_master_id = mm.pk_main_member_master_id
+                LEFT JOIN member_profiles mp ON b.FK_member_master_profile_id = mp.Id
+                LEFT JOIN users u ON mp.UserId = u.Id
+                LEFT JOIN tbl_master_designation d ON b.Fk_Master_Designation_ID = d.Pk_Master_Designation_ID
+                LEFT JOIN group_master cg ON b.fk_chapter_id = cg.pk_group_master_id
+                WHERE b.FK_group_master_id = 31185 AND (b.Isdeleted = 0 OR b.Isdeleted IS NULL)
+                AND (b.YearFilter LIKE CONCAT('%', YEAR(NOW()), '%') OR b.YearFilter LIKE CONCAT('%', YEAR(NOW())-1, '%'))";
+            if (!string.IsNullOrEmpty(request.searchText))
+                sql += " AND (m.Member_name LIKE @search OR m.last_name LIKE @search)";
+            if (!string.IsNullOrEmpty(request.YearFilter))
+                sql += " AND b.YearFilter = @yearFilter";
+            sql += " ORDER BY b.BODorderNumber";
+            cmd.CommandText = sql;
+            if (!string.IsNullOrEmpty(request.searchText))
+                cmd.Parameters.AddWithValue("@search", $"%{request.searchText}%");
+            if (!string.IsNullOrEmpty(request.YearFilter))
+                cmd.Parameters.AddWithValue("@yearFilter", request.YearFilter);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                members.Add(new
+                {
+                    BOD_pkID = reader["BOD_PkID"]?.ToString(),
+                    ProfileID = reader["ProfileID"]?.ToString(),
+                    PhoneNo = reader["PhoneNo"]?.ToString(),
+                    Email = reader["Email"]?.ToString(),
+                    YearFilter = reader["YearFilter"]?.ToString(),
+                    MemberName = reader["MemberName"]?.ToString()?.Trim(),
+                    masterUID = reader["masterUID"]?.ToString(),
+                    grpID = reader["grpID"]?.ToString(),
+                    pic = reader["pic"]?.ToString(),
+                    MemberDesignation = reader["MemberDesignation"]?.ToString(),
+                    membermobile = reader["membermobile"]?.ToString(),
+                    chapterId = reader["chapterId"]?.ToString(),
+                    chapterName = reader["chapterName"]?.ToString(),
+                });
+            }
+            if (members.Count > 0)
+                return new { status = "0", message = "success", Result = new { Table = members } };
+        }
+        catch { }
+
+        // Fallback to local DB
         var query = _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Where(x => x.gm.GroupId == 31185 && x.mp.Designation != null && x.mp.Designation != "");
         if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
-        var members = await query.Select(x => new { BOD_pkID = x.mp.Id, ProfileID = x.mp.Id, FK_Master_Designation_ID = 0, PhoneNo = x.mp.MemberMobile, Email = x.mp.MemberEmail, MemberName = x.mp.MemberName, masterUID = x.mp.UserId, sr_NO = 0, grpID = 31185, pic = x.mp.ProfilePic, MemberDesignation = x.mp.Designation, membermobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile }).ToListAsync();
-        return new { status = "0", message = "success", Result = new { Table = members } };
+        var localMembers = await query.Select(x => new { BOD_pkID = x.mp.Id, ProfileID = x.mp.Id, FK_Master_Designation_ID = 0, PhoneNo = x.mp.MemberMobile, Email = x.mp.MemberEmail, MemberName = x.mp.MemberName, masterUID = x.mp.UserId, sr_NO = 0, grpID = 31185, pic = x.mp.ProfilePic, MemberDesignation = x.mp.Designation, membermobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile }).ToListAsync();
+        return new { status = "0", message = "success", Result = new { Table = localMembers } };
+    }
+
+    public async Task<object> GetBODDetails(string bodPkId, string yearFilter)
+    {
+        var id = int.TryParse(bodPkId, out var bid) ? bid : 0;
+        try
+        {
+            using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "CALL GetBODDetails_by_ID(@id, @year)";
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@year", yearFilter ?? "");
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                return new
+                {
+                    status = "0", message = "success",
+                    data = new
+                    {
+                        BOD_PkID = bodPkId,
+                        Sr_No = reader["Sr_No"]?.ToString(),
+                        FK_Master_Designation_ID = reader["FK_Master_Designation_ID"]?.ToString(),
+                        OtherDesignation = reader["OtherDesignation"]?.ToString(),
+                        EmailID = reader["EmailID"]?.ToString(),
+                        PhoneNo = reader["PhoneNo"]?.ToString(),
+                        FK_member_master_profile_id = reader["FK_member_master_profile_id"]?.ToString(),
+                    }
+                };
+            }
+        }
+        catch { }
+        return new { status = "1", message = "Not found" };
+    }
+
+    public async Task<object> DeleteBOD(string bodPkId, string yearFilter)
+    {
+        var id = int.TryParse(bodPkId, out var bid) ? bid : 0;
+        try
+        {
+            using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "CALL Delete_BOD_Member(@id, @year)";
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@year", yearFilter ?? "");
+            await cmd.ExecuteNonQueryAsync();
+            return new { status = "0", message = "Member Deleted Successfully" };
+        }
+        catch (Exception ex) { return new { status = "1", message = ex.Message }; }
+    }
+
+    public async Task<object> UpdateBOD(UpdateBODRequest request)
+    {
+        try
+        {
+            using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            // Map designation: frontend sends ID (numeric string), use as-is
+            var desigIdMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Chairman"] = "1", ["Vice Chairman"] = "2", ["Hon. Secretary"] = "3",
+                ["Hon. Treasurer"] = "4", ["Governing Council Member"] = "5", ["Exe. Comm. Member"] = "6",
+                ["President"] = "7", ["Vice President"] = "8", ["Hon. General Secretary"] = "9", ["Others"] = "10"
+            };
+            var desigRaw = request.designation ?? "10";
+            // If it's already a number, use it; if it's a name, map it
+            var desigId = int.TryParse(desigRaw, out _) ? desigRaw : desigIdMap.GetValueOrDefault(desigRaw, "10");
+
+            // Check for duplicate Chairman - only one allowed per group (same as production)
+            var bodPkId = int.TryParse(request.BOD_PkID, out var bpk) ? bpk : 0;
+            var restrictedDesigs = new[] { "1" }; // Chairman only
+            if (restrictedDesigs.Contains(desigId))
+            {
+                using var chkCmd = conn.CreateCommand();
+                var yearFilter = request.yearFilter ?? $"{DateTime.Now.Year}-{DateTime.Now.Year}";
+                chkCmd.CommandText = "SELECT BOD_PkID FROM bod_master WHERE FK_group_master_id=@grp AND Fk_Master_Designation_ID=@desig AND COALESCE(Isdeleted,0)=0 AND BOD_PkID != @bodId AND YearFilter=@year LIMIT 1";
+                chkCmd.Parameters.AddWithValue("@grp", request.groupId ?? "31185");
+                chkCmd.Parameters.AddWithValue("@desig", desigId);
+                chkCmd.Parameters.AddWithValue("@bodId", bodPkId);
+                chkCmd.Parameters.AddWithValue("@year", yearFilter);
+                var existing = await chkCmd.ExecuteScalarAsync();
+                if (existing != null)
+                {
+                    var desigName2 = desigId == "7" ? "President" : "Chairman";
+                    return new { status = "1", message = $"{desigName2} already exists. Only one {desigName2} is allowed." };
+                }
+            }
+            // Check if member is already President in another group (Executive Committee)
+            if (desigId == "7" && request.groupId == "31185")
+            {
+                var memberProfileId = request.memberProfileID ?? "0";
+                using var chkPresCmd = conn.CreateCommand();
+                chkPresCmd.CommandText = "SELECT FK_group_master_id FROM bod_master WHERE FK_member_master_profile_id=@mid AND Fk_Master_Designation_ID=7 AND COALESCE(Isdeleted,0)=0 AND FK_group_master_id != 31185 AND BOD_PkID != @bodId LIMIT 1";
+                chkPresCmd.Parameters.AddWithValue("@mid", memberProfileId);
+                chkPresCmd.Parameters.AddWithValue("@bodId", bodPkId);
+                var existingGrp = await chkPresCmd.ExecuteScalarAsync();
+                if (existingGrp != null)
+                {
+                    return new { status = "1", message = "This member is already a President in Executive Committee." };
+                }
+            }
+
+            // Reverse map: get the name from ID for p_Mem_Designation
+            var idToName = new Dictionary<string, string>
+            {
+                ["1"] = "Chairman", ["2"] = "Vice Chairman", ["3"] = "Hon. Secretary",
+                ["4"] = "Hon. Treasurer", ["5"] = "Governing Council Member", ["6"] = "Exe. Comm. Member",
+                ["7"] = "President", ["8"] = "Vice President", ["9"] = "Hon. General Secretary", ["10"] = "Others"
+            };
+            var desigName = idToName.GetValueOrDefault(desigId, desigRaw);
+
+            // Param 12 (p_gallery_Out_id) is INOUT — must use a MySQL session variable
+            cmd.CommandText = "SET @gallery_out = 0; CALL WEBUpdateMemberDesignation(@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @gallery_out, @p13, @p14, @p15);";
+            cmd.Parameters.AddWithValue("@p1", int.TryParse(request.BOD_PkID, out var bod) ? bod : 0);
+            cmd.Parameters.AddWithValue("@p2", desigId);
+            cmd.Parameters.AddWithValue("@p3", desigName);
+            cmd.Parameters.AddWithValue("@p4", request.memberProfileID ?? "0");
+            cmd.Parameters.AddWithValue("@p5", request.name ?? "");
+            cmd.Parameters.AddWithValue("@p6", request.phoneNo ?? "");
+            cmd.Parameters.AddWithValue("@p7", request.emailID ?? "");
+            cmd.Parameters.AddWithValue("@p8", request.yearFilter ?? "");
+            cmd.Parameters.AddWithValue("@p9", request.groupId ?? "31185");
+            cmd.Parameters.AddWithValue("@p10", "0");
+            cmd.Parameters.AddWithValue("@p11", request.otherDesignation ?? "");
+            cmd.Parameters.AddWithValue("@p13", DBNull.Value);
+            cmd.Parameters.AddWithValue("@p14", DBNull.Value);
+            cmd.Parameters.AddWithValue("@p15", int.TryParse(request.chapterId, out var ch) ? ch : 0);
+            await cmd.ExecuteNonQueryAsync();
+
+            // Sync member name from EF tables to production-synced tables so GC listing shows correct name
+            var mpId = int.TryParse(request.memberProfileID, out var mpid) ? mpid : 0;
+            if (mpId > 0)
+            {
+                try
+                {
+                    var efProfile = await _db.MemberProfiles.Include(p => p.User).FirstOrDefaultAsync(p => p.Id == mpId);
+                    if (efProfile != null)
+                    {
+                        var fullName = efProfile.User != null
+                            ? $"{efProfile.User.FirstName} {efProfile.User.LastName}".Trim()
+                            : efProfile.MemberName ?? "";
+                        var firstName = efProfile.User?.FirstName ?? efProfile.MemberName ?? "";
+                        var middleName = efProfile.User?.MiddleName ?? "";
+                        var lastName = efProfile.User?.LastName ?? "";
+                        var userId = efProfile.UserId;
+
+                        using var syncCmd = conn.CreateCommand();
+                        syncCmd.CommandText = "INSERT INTO member_master_profile (pk_member_master_profile_id, fk_main_member_master_id, Member_name, member_email_id, member_mobile_no) VALUES (@id, @uid, @name, @email, @mobile) ON DUPLICATE KEY UPDATE fk_main_member_master_id=@uid, Member_name=@name, member_email_id=@email, member_mobile_no=@mobile";
+                        syncCmd.Parameters.AddWithValue("@id", mpId);
+                        syncCmd.Parameters.AddWithValue("@uid", userId);
+                        syncCmd.Parameters.AddWithValue("@name", firstName);
+                        syncCmd.Parameters.AddWithValue("@email", efProfile.MemberEmail ?? "");
+                        syncCmd.Parameters.AddWithValue("@mobile", efProfile.MemberMobile ?? "");
+                        await syncCmd.ExecuteNonQueryAsync();
+
+                        using var syncCmd2 = conn.CreateCommand();
+                        syncCmd2.CommandText = "INSERT INTO main_member_master (pk_main_member_master_id, member_name, middle_name, last_name, member_mobile, member_emailid) VALUES (@id, @first, @middle, @last, @mobile, @email) ON DUPLICATE KEY UPDATE member_name=@first, middle_name=@middle, last_name=@last, member_mobile=@mobile, member_emailid=@email";
+                        syncCmd2.Parameters.AddWithValue("@id", userId);
+                        syncCmd2.Parameters.AddWithValue("@first", firstName);
+                        syncCmd2.Parameters.AddWithValue("@middle", middleName);
+                        syncCmd2.Parameters.AddWithValue("@last", lastName);
+                        syncCmd2.Parameters.AddWithValue("@mobile", efProfile.MemberMobile ?? "");
+                        syncCmd2.Parameters.AddWithValue("@email", efProfile.MemberEmail ?? "");
+                        await syncCmd2.ExecuteNonQueryAsync();
+                    }
+                }
+                catch { }
+            }
+
+            // Check gallery_out value: 1=new, 2=already exists, 3=updated
+            using var outCmd = conn.CreateCommand();
+            outCmd.CommandText = "SELECT @gallery_out";
+            var galleryOut = await outCmd.ExecuteScalarAsync();
+            var outVal = Convert.ToInt32(galleryOut ?? 0);
+            if (outVal == 2)
+                return new { status = "1", message = "This member already exists with the same designation." };
+
+            return new { status = "0", message = "Governing Council Updated Successfully" };
+        }
+        catch (Exception ex) { return new { status = "1", message = ex.Message }; }
     }
 
     public async Task<UpdateResponse> UpdateMember(UpdateMemberRequest request)
@@ -341,7 +645,7 @@ public class MemberService : IMemberService
             blood_Group = mp.BloodGroup, DOB = mp.Dob,
             DOA = mp.Doa,
             birthday = mp.Dob, annivarsary = mp.Doa,
-            member_profile_photo_path = mp.ProfilePic, Company_name = mp.CompanyName,
+            member_profile_photo_path = mp.ProfilePic ?? "", Company_name = mp.CompanyName,
             IMEI_Membership_Id = mp.ImeiMembershipId, MembershipGrade_Id = "",
             Membership_Grade = mp.MembershipGrade, CategoryId = mp.CategoryId ?? "0",
             CategoryName = mp.Category, Address = addr?.Address, City = addr?.City,
@@ -373,5 +677,82 @@ public class MemberService : IMemberService
         await _db.SaveChangesAsync();
 
         return new { status = "0", message = "success" };
+    }
+
+    public async Task<object> AddMember(WebAddMemberRequest request)
+    {
+        // Check if mobile number already exists
+        var existingUser = await _db.Users.FirstOrDefaultAsync(u => u.MobileNo == request.mobileNo);
+        if (existingUser != null)
+            return new { status = "1", message = "Mobile number already exists" };
+
+        // Create user
+        var user = new User
+        {
+            MobileNo = request.mobileNo,
+            CountryCode = request.countryCode ?? "91",
+            FirstName = request.firstName,
+            MiddleName = request.middleName,
+            LastName = request.lastName,
+            Email = request.emailID,
+            IsRegistered = true,
+        };
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
+        // Create member profile
+        var fullName = new[] { request.firstName, request.middleName, request.lastName }
+            .Where(s => !string.IsNullOrWhiteSpace(s)).Aggregate("", (a, b) => a + " " + b).Trim();
+
+        // Parse DOB/DOA
+        DateTime? dob = null, doa = null;
+        if (!string.IsNullOrEmpty(request.dob) && DateTime.TryParse(request.dob, out var d)) dob = d;
+        if (!string.IsNullOrEmpty(request.doa) && DateTime.TryParse(request.doa, out var a)) doa = a;
+
+        var profile = new MemberProfile
+        {
+            UserId = user.Id,
+            MemberName = fullName,
+            MemberMobile = request.mobileNo,
+            MemberEmail = request.emailID,
+            CountryCode = request.countryCode ?? "91",
+            BloodGroup = request.bloodGrp,
+            Dob = dob?.ToString("yyyy-MM-dd"),
+            Doa = doa?.ToString("yyyy-MM-dd"),
+            CompanyName = request.companyName,
+            MembershipGrade = request.membershipGrade,
+            Category = request.category,
+            ImeiMembershipId = request.membershipId,
+            SecondaryMobileNo = request.secondaryMobileNo,
+            MemberCountry = request.country,
+        };
+        _db.MemberProfiles.Add(profile);
+        await _db.SaveChangesAsync();
+
+        // Add to group
+        var grpId = int.TryParse(request.grpID, out var gid) ? gid : 0;
+        if (grpId > 0)
+        {
+            _db.GroupMembers.Add(new GroupMember { GroupId = grpId, MemberProfileId = profile.Id, MemberMainId = user.Id.ToString(), IsActive = true });
+            await _db.SaveChangesAsync();
+        }
+
+        // Add address
+        if (!string.IsNullOrEmpty(request.address) || !string.IsNullOrEmpty(request.city))
+        {
+            _db.AddressDetails.Add(new AddressDetail
+            {
+                MemberProfileId = profile.Id,
+                AddressType = "Residence",
+                Address = request.address,
+                City = request.city,
+                State = request.state,
+                Country = request.country,
+                Pincode = request.pincode,
+            });
+            await _db.SaveChangesAsync();
+        }
+
+        return new { status = "0", message = "success", profileId = profile.Id.ToString(), masterUID = user.Id.ToString() };
     }
 }

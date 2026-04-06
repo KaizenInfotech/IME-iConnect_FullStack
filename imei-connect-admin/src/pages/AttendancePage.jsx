@@ -8,8 +8,7 @@ import { getAttendanceRecords, createAttendance, updateAttendance, deleteAttenda
 // memberService imported dynamically in fetchMembers
 
 const currentYear = new Date().getFullYear();
-const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
-const PAGE_SIZE = 10;
+const years = [currentYear];
 
 const emptyForm = {
   AttendanceName: '',
@@ -54,7 +53,6 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(currentYear);
   const [searchTerm, setSearchTerm] = useState('');
-  const [pageNo, setPageNo] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -74,6 +72,18 @@ export default function AttendancePage() {
 
   useEffect(() => {
     let filtered = [...allItems];
+    // Filter by year
+    if (year) {
+      filtered = filtered.filter(item => {
+        const dateStr = item.AttendanceDate || item.attendanceDate || '';
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        if (!isNaN(d)) return d.getFullYear() === year;
+        // Handle DD/MM/YYYY format
+        const match = dateStr.match(/(\d{4})/);
+        return match && parseInt(match[1]) === year;
+      });
+    }
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
       filtered = filtered.filter(item =>
@@ -81,8 +91,7 @@ export default function AttendancePage() {
       );
     }
     setItems(filtered);
-    setPageNo(1);
-  }, [searchTerm, allItems]);
+  }, [searchTerm, allItems, year]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -138,13 +147,27 @@ export default function AttendancePage() {
     if (!validate()) return;
     setSaving(true);
     try {
+      const groupId = filterGroupId || '33359';
       const payload = {
-        ...form,
-        Members: selectedMembers,
-        Visitors: visitors,
+        AttendanceID: editing ? String(editing.Id || editing.id || '0') : '0',
+        GroupId: groupId,
+        AttendanceName: form.AttendanceName,
+        AttendanceDesc: form.AttendanceDesc,
+        AttendanceDate: form.AttendanceDate,
+        Members: selectedMembers.map(m => ({
+          Id: String(m.Id || m.id || m.MemberProfileId || ''),
+          MemberProfileId: String(m.Id || m.id || m.MemberProfileId || ''),
+          MemberName: m.MemberName || m.memberName || '',
+          Type: m.Type || 'Present',
+        })),
+        Visitors: visitors.map(v => ({
+          VisitorName: v.VisitorName || v.visitorName || '',
+          Type: v.Type || 'Visitor',
+        })),
       };
-      if (editing) await updateAttendance(editing.id || editing.Id, payload);
+      if (editing) await updateAttendance(payload);
       else await createAttendance(payload);
+      alert(editing ? 'Attendance updated successfully' : 'Attendance added successfully');
       setShowModal(false);
       setEditing(null);
       setForm(emptyForm);
@@ -158,25 +181,52 @@ export default function AttendancePage() {
 
   const handleDelete = async () => {
     try {
-      await deleteAttendance(deleteTarget.id || deleteTarget.Id);
+      await deleteAttendance(deleteTarget.Id || deleteTarget.id, '0');
+      alert('Attendance deleted successfully');
       setDeleteTarget(null);
       fetchData();
     } catch { setError('Delete failed'); }
   };
 
-  const openEdit = (item) => {
+  const openEdit = async (item) => {
+    // Clear previous state first
+    setSelectedMembers([]);
+    setVisitors([]);
+    setErrors({});
     setEditing(item);
     setForm({
       AttendanceName: item.AttendanceName || item.attendanceName || '',
-      AttendanceDesc: item.AttendanceDesc || item.attendanceDesc || '',
+      AttendanceDesc: item.Description || item.AttendanceDesc || item.attendanceDesc || '',
       AttendanceDate: toDatetimeLocal(item.AttendanceDate || item.attendanceDate),
       GroupId: item.GroupId || item.groupId || 0,
+      MemberCount: item.MemberCount || item.member_count || 0,
+      VisitorCount: item.VisitorCount || item.visitor_count || 0,
     });
-    setSelectedMembers(item.Members || item.members || []);
-    setVisitors(item.Visitors || item.visitors || []);
-    setErrors({});
+
+    // Fetch all data BEFORE showing the modal
+    const attId = String(item.Id || item.AttendanceID);
+    const [, memRes, visRes] = await Promise.all([
+      fetchMembers(),
+      import('../api/attendanceService').then(mod => mod.getAttendanceMembers(attId)).catch(() => ({ data: {} })),
+      import('../api/attendanceService').then(mod => mod.getAttendanceVisitors(attId)).catch(() => ({ data: {} })),
+    ]);
+
+    const existingMembers = memRes.data?.TBAttendanceMemberDetailsResult?.AttendanceMemberResult || [];
+    const selMembers = existingMembers.map(m => ({ Id: String(m.FK_MemberID), MemberName: m.MemberName, MemberProfileId: String(m.FK_MemberID) }));
+    setSelectedMembers(selMembers);
+
+    const existingVisitors = visRes.data?.TBAttendanceMemberDetailsResult?.AttendanceMemberResult || [];
+    setVisitors(existingVisitors.map(v => ({ VisitorName: v.MemberName || v.VisitorName, Type: 'Visitor' })));
+
+    // Update counts from actual fetched data
+    setForm(prev => ({
+      ...prev,
+      MemberCount: selMembers.length || item.MemberCount || item.member_count || 0,
+      VisitorCount: existingVisitors.length || item.VisitorCount || item.visitor_count || 0,
+    }));
+
+    // Show modal only after data is ready
     setShowModal(true);
-    fetchMembers();
   };
 
   const openAdd = () => {
@@ -189,11 +239,13 @@ export default function AttendancePage() {
     fetchMembers();
   };
 
+  const getMemberId = (m) => String(m.id || m.Id || m.MemberProfileId || '');
+
   const toggleMember = (member) => {
-    const id = member.id || member.Id || member.MemberProfileId;
-    const exists = selectedMembers.find(m => (m.id || m.Id || m.MemberProfileId) === id);
+    const id = getMemberId(member);
+    const exists = selectedMembers.find(m => getMemberId(m) === id);
     if (exists) {
-      setSelectedMembers(selectedMembers.filter(m => (m.id || m.Id || m.MemberProfileId) !== id));
+      setSelectedMembers(selectedMembers.filter(m => getMemberId(m) !== id));
     } else {
       setSelectedMembers([...selectedMembers, { ...member, Type: 'Present' }]);
     }
@@ -223,28 +275,7 @@ export default function AttendancePage() {
     downloadCSV(data, 'MemberWiseReport.csv');
   };
 
-  // Pagination
-  const totalPages = Math.ceil(items.length / PAGE_SIZE);
-  const paginatedItems = items.slice((pageNo - 1) * PAGE_SIZE, pageNo * PAGE_SIZE);
 
-  const renderPagination = () => {
-    if (totalPages <= 1) return null;
-    const pages = [];
-    for (let i = 1; i <= totalPages; i++) pages.push(i);
-    return (
-      <div className="gridPager flex items-center justify-center gap-0 py-3">
-        <a href="#" onClick={(e) => { e.preventDefault(); setPageNo(1); }}>First</a>
-        <a href="#" onClick={(e) => { e.preventDefault(); if (pageNo > 1) setPageNo(pageNo - 1); }}>&laquo;</a>
-        {pages.map(p => (
-          p === pageNo
-            ? <span key={p}>{p}</span>
-            : <a key={p} href="#" onClick={(e) => { e.preventDefault(); setPageNo(p); }}>{p}</a>
-        ))}
-        <a href="#" onClick={(e) => { e.preventDefault(); if (pageNo < totalPages) setPageNo(pageNo + 1); }}>&raquo;</a>
-        <a href="#" onClick={(e) => { e.preventDefault(); setPageNo(totalPages); }}>Last</a>
-      </div>
-    );
-  };
 
   if (loading) return <LoadingSpinner className="h-screen" />;
 
@@ -258,89 +289,82 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg mb-4">{error}<button onClick={() => setError('')} className="float-right font-bold">&times;</button></div>}
+      {error && (
+        <div style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '10px 16px', borderRadius: '4px', marginBottom: '12px', fontSize: '13px' }}>
+          {error}<button onClick={() => setError('')} style={{ float: 'right', background: 'none', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>&times;</button>
+        </div>
+      )}
 
       {/* Controls Row */}
-      <div className="card mb-4">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Search */}
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search..."
-            className="form-input"
-            style={{ width: 'auto', maxWidth: 220 }}
-          />
-          <button className="btn-primary text-sm flex items-center gap-1">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            Search
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '15px' }}>
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Search"
+          style={{ height: '32px', border: '1px solid #ccc', borderRadius: '4px', padding: '4px 10px', fontSize: '13px', outline: 'none', width: '150px' }}
+        />
+        <select
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+          style={{ height: '32px', border: '1px solid #ccc', borderRadius: '4px', padding: '4px 8px', fontSize: '13px', outline: 'none' }}
+        >
+          {years.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <button onClick={exportMeetingWise} style={{ backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }} title="Meeting Wise Report">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" /></svg>
+          Meeting Wise Report
+        </button>
+        <button onClick={exportMemberWise} style={{ backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }} title="Member Wise Report">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" /></svg>
+          Member Wise Report
+        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button onClick={() => navigate(`/attendance/new${filterGroupId ? `?groupId=${filterGroupId}` : ''}`)} style={{ backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer' }}>+ Add</button>
+          <button onClick={() => filterGroupId ? navigate(`/groups/${filterGroupId}`) : navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer' }}>
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+            Back
           </button>
-
-          {/* Year */}
-          <select
-            value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
-            className="form-select"
-            style={{ width: '10%', minWidth: 80 }}
-          >
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-
-          {/* Reports */}
-          <button onClick={exportMeetingWise} className="btn-excel text-sm flex items-center gap-1" title="Meeting Wise Report">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" /></svg>
-            Meeting Wise Report
-          </button>
-          <button onClick={exportMemberWise} className="btn-excel text-sm flex items-center gap-1" title="Member Wise Report">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" /></svg>
-            Member Wise Report
-          </button>
-
-          <div className="ml-auto flex items-center gap-2">
-            <button onClick={openAdd} className="btn-warning text-sm">Add</button>
-            <button onClick={() => navigate(-1)} style={{ backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer' }}>← Back</button>
-          </div>
         </div>
       </div>
 
       {/* Table */}
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full text-sm">
+      <div style={{ backgroundColor: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 3px 5px 0px rgba(0,0,0,0.06)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
-            <tr className="table-header">
-              <th className="px-4 py-3 text-left font-normal" style={{ width: '5%' }}>Sr.No.</th>
-              <th className="px-4 py-3 text-left font-normal" style={{ width: '70%' }}>Attendance Name</th>
-              <th className="px-4 py-3 text-left font-normal" style={{ width: '10%' }}>Attendance Date</th>
-              <th className="px-2 py-3 text-center font-normal" style={{ width: '5%' }}>Edit</th>
-              <th className="px-2 py-3 text-center font-normal" style={{ width: '5%' }}>Delete</th>
+            <tr style={{ backgroundColor: '#1a297d', color: '#fff' }}>
+              <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 'normal', width: '5%' }}>Sr.No.</th>
+              <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 'normal', width: '70%' }}>Attendance Name</th>
+              <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 'normal', width: '10%' }}>Attendance Date</th>
+              <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 'normal', width: '5%' }}>Edit</th>
+              <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 'normal', width: '5%' }}>Delete</th>
             </tr>
           </thead>
           <tbody>
-            {paginatedItems.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500">No Events Found!!!</td></tr>
+            {items.length === 0 ? (
+              <tr><td colSpan={5} style={{ padding: '30px', textAlign: 'center', color: '#999' }}>No Events Found!!!</td></tr>
             ) : (
-              paginatedItems.map((item, idx) => {
-                const srNo = (pageNo - 1) * PAGE_SIZE + idx + 1;
+              items.map((item, idx) => {
+                const srNo = idx + 1;
                 const name = item.AttendanceName || item.attendanceName || '';
                 const date = formatDateDMY(item.AttendanceDate || item.attendanceDate);
                 return (
                   <tr
                     key={item.id || item.Id || idx}
-                    className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
-                    onClick={() => navigate(`/attendance/${item.id || item.Id}`)}
+                    style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f8f8f8', borderBottom: '1px solid #eee', cursor: 'pointer' }}
+                    onClick={() => navigate(`/attendance/${item.Id || item.id}${filterGroupId ? `?groupId=${filterGroupId}` : ''}`)}
                   >
-                    <td className="px-4 py-3">{srNo}</td>
-                    <td className="px-4 py-3 text-[#1a297d] font-medium">{name}</td>
-                    <td className="px-4 py-3">{date}</td>
-                    <td className="px-2 py-3 text-center">
-                      <button onClick={(e) => { e.stopPropagation(); openEdit(item); }} className="text-gray-500 hover:text-[#1a297d]" title="Edit">
-                        <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    <td style={{ padding: '10px 16px' }}>{srNo}</td>
+                    <td style={{ padding: '10px 16px', color: '#1a297d', fontWeight: '500' }}>{name}</td>
+                    <td style={{ padding: '10px 16px' }}>{date}</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                      <button onClick={(e) => { e.stopPropagation(); navigate(`/attendance/${item.Id || item.id}${filterGroupId ? `?groupId=${filterGroupId}` : ''}`); }} title="Edit" style={{ width: '28px', height: '28px', borderRadius: '4px', backgroundColor: '#0ead9a', color: '#fff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                       </button>
                     </td>
-                    <td className="px-2 py-3 text-center">
-                      <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(item); }} className="text-gray-500 hover:text-red-600" title="Delete">
-                        <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                      <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(item); }} title="Delete" style={{ width: '28px', height: '28px', borderRadius: '4px', backgroundColor: '#f44336', color: '#fff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                       </button>
                     </td>
                   </tr>
@@ -349,7 +373,6 @@ export default function AttendancePage() {
             )}
           </tbody>
         </table>
-        {renderPagination()}
       </div>
 
       {/* Create/Edit Modal */}
@@ -387,6 +410,20 @@ export default function AttendancePage() {
             className="form-input"
           />
           {errors.AttendanceDate && <span className="validation-error">{errors.AttendanceDate}</span>}
+
+          {/* Member Count & Visitor Count */}
+          {editing && (
+            <div className="flex items-center gap-4 mt-3">
+              <div>
+                <label className="form-label">Member Count</label>
+                <input type="text" value={form.MemberCount || 0} readOnly className="form-input" style={{ backgroundColor: '#eee', width: '100px' }} />
+              </div>
+              <div>
+                <label className="form-label">Visitor Count</label>
+                <input type="text" value={form.VisitorCount || 0} readOnly className="form-input" style={{ backgroundColor: '#eee', width: '100px' }} />
+              </div>
+            </div>
+          )}
 
           {/* Members & Visitors buttons */}
           <div className="flex items-center gap-4 mt-4">
@@ -444,7 +481,7 @@ export default function AttendancePage() {
               <tbody>
                 {membersList.map((member, i) => {
                   const memberId = member.id || member.Id || member.MemberProfileId;
-                  const isSelected = selectedMembers.some(m => (m.id || m.Id || m.MemberProfileId) === memberId);
+                  const isSelected = selectedMembers.some(m => getMemberId(m) === String(memberId));
                   return (
                     <tr key={memberId || i} className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`} onClick={() => toggleMember(member)}>
                       <td className="px-3 py-2">
@@ -488,7 +525,7 @@ export default function AttendancePage() {
         <button
           type="button"
           onClick={() => setVisitors([...visitors, { VisitorName: '', Type: 'Visitor' }])}
-          className="btn-warning text-sm mb-3"
+          style={{ backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '5px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', marginBottom: '12px' }}
         >
           + Add Visitor
         </button>

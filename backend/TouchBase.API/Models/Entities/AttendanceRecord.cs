@@ -38,6 +38,8 @@ public class AttendanceVisitor
     public int Id { get; set; }
     public int AttendanceRecordId { get; set; }
     public string? VisitorName { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? InvitedBy { get; set; }
     public string? Type { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

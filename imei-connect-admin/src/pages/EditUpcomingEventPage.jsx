@@ -15,7 +15,18 @@ const labelStyle = {
 
 function toDatetimeLocal(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const clean = dateStr.replace(/[\u202f\u00a0]/g, ' ').trim();
+  const dmyMatch = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):?(\d{2})?\s*(AM|PM)?$/i);
+  if (dmyMatch) {
+    let [, dd, mm, yyyy, hh, min, , ampm] = dmyMatch;
+    let h = parseInt(hh);
+    if (ampm) {
+      if (ampm.toUpperCase() === 'PM' && h < 12) h += 12;
+      if (ampm.toUpperCase() === 'AM' && h === 12) h = 0;
+    }
+    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T${String(h).padStart(2, '0')}:${min}`;
+  }
+  const d = new Date(clean);
   if (isNaN(d)) return dateStr;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
@@ -40,33 +51,66 @@ export default function EditUpcomingEventPage() {
     RegLink: '',
     EnableRSVP: false,
     AddQuestion: false,
+    QuestionType: '2',
+    QuestionText: '',
+    Option1: '',
+    Option2: '',
     RepeatNotification: false,
     EventImage: null,
   });
+  const [repeatDates, setRepeatDates] = useState([]);
+  const [repeatDate, setRepeatDate] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await getUpcomingEvents('31185', '2', new Date().toISOString().slice(0, 10), 'E');
-        const events = res.data?.TBEventListTypeResult?.Result?.Events || [];
-        const item = events.find(e => String(e.MemberID) === String(id));
-        if (item) {
-          setCurrentRegLink(item.RegLink || '');
+        // Fetch event details from GetEventDetails for full data including publish/expiry dates
+        const eventId = String(id).replace(/^E/, '');
+        const { getEvent } = await import('../api/eventService');
+        const detailRes = await getEvent(eventId, '31185');
+        const evtList = detailRes.data?.EventsDetailResult || [];
+        const detail = evtList.length > 0 ? (evtList[0].EventsDetail || evtList[0]) : detailRes.data;
+
+        // Also try celebrations API for image
+        let eventImg = null;
+        try {
+          const res = await getUpcomingEvents('31185', '2', new Date().toISOString().slice(0, 10), 'E');
+          const events = res.data?.TBEventListTypeResult?.Result?.Events || [];
+          const celebItem = events.find(e => String(e.MemberID) === String(id));
+          if (celebItem?.eventImg) eventImg = celebItem.eventImg;
+        } catch {}
+
+        if (detail) {
+          setCurrentRegLink(detail.RegLink || detail.regLink || detail.reglink || detail.link || '');
           setForm({
-            EventTitle: item.title || '',
-            EventDesc: item.Description || '',
-            EventDate: toDatetimeLocal(item.eventDate || ''),
-            PublishDate: '',
-            ExpiryDate: '',
-            EventVenue: item.EventVenue || '',
-            AboutEvent: '',
-            RegLink: item.RegLink || '',
-            EnableRSVP: false,
-            AddQuestion: false,
-            RepeatNotification: false,
+            EventTitle: detail.EventTitle || detail.eventTitle || '',
+            EventDesc: detail.EventDesc || detail.eventDesc || detail.Description || detail.description || '',
+            EventDate: toDatetimeLocal(detail.EventDate || detail.eventDate || detail.eventDateTime || ''),
+            PublishDate: toDatetimeLocal(detail.PublishDate || detail.publishDate || detail.pubDate || ''),
+            ExpiryDate: toDatetimeLocal(detail.ExpiryDate || detail.expiryDate || ''),
+            EventVenue: detail.EventVenue || detail.eventVenue || detail.venue || detail.Venue || '',
+            RegLink: detail.RegLink || detail.regLink || detail.reglink || detail.link || '',
+            EnableRSVP: detail.RsvpEnable === '1' || detail.rsvpEnable === '1' || detail.rsvpEnable === 1,
+            AddQuestion: (detail.isQuesEnable || detail.questionEnable || '0') !== '0',
+            QuestionType: detail.questionType || detail.isQuesEnable || '2',
+            QuestionText: detail.questionText || '',
+            Option1: detail.option1 || '',
+            Option2: detail.option2 || '',
+            RepeatNotification: !!(detail.repeatDateTime && detail.repeatDateTime !== 'None' && detail.repeatDateTime.length > 0),
             EventImage: null,
           });
-          if (item.eventImg) setImagePreview(item.eventImg);
+          // Populate repeat dates
+          if (detail.repeatDateTime && detail.repeatDateTime !== 'None') {
+            setRepeatDates(detail.repeatDateTime.split(',').filter(d => d.trim()));
+          }
+          const img = eventImg || detail.eventImg || detail.EventImageId || '';
+          if (img) {
+            if (img.startsWith('data:') || img.startsWith('http')) {
+              setImagePreview(img);
+            } else if (img) {
+              setImagePreview(`https://imeiconnect.com/Documents/Event/Group${detail.grpID || '31185'}/${img}`);
+            }
+          }
         }
       } catch {}
       finally { setLoading(false); }
@@ -86,21 +130,34 @@ export default function EditUpcomingEventPage() {
   const handleSubmit = async () => {
     if (!form.EventTitle.trim()) { alert('Please Enter Title'); return; }
     if (!form.EventDate) { alert('Please Enter Event Date'); return; }
+    if (!form.EventVenue?.trim()) { alert('Please Enter Event Venue'); return; }
     if (!form.PublishDate) { alert('Please Enter Publish Date'); return; }
+    if (!form.ExpiryDate) { alert('Please Enter Expiry Date'); return; }
+    if (new Date(form.ExpiryDate) <= new Date(form.PublishDate)) { alert('Expiry Date must be greater than Publish Date'); return; }
     setSaving(true);
     setError('');
     try {
-      await updateEvent(id, {
-        EventTitle: form.EventTitle,
-        EventDesc: form.EventDesc,
-        EventDate: form.EventDate,
-        PublishDate: form.PublishDate,
-        ExpiryDate: form.ExpiryDate,
-        EventVenue: form.EventVenue,
-        RegLink: form.RegLink,
-        RsvpEnable: form.EnableRSVP ? '1' : '0',
-        QuestionEnable: form.AddQuestion ? '1' : '0',
+      await updateEvent({
+        eventID: String(id).replace(/^E/, ''),
+        grpID: '31185',
+        userID: '13010',
+        evntTitle: form.EventTitle,
+        evntDesc: form.EventDesc,
+        evntDate: form.EventDate,
+        publishDate: form.PublishDate,
+        expiryDate: form.ExpiryDate,
+        eventVenue: form.EventVenue,
+        reglink: form.RegLink,
+        rsvpEnable: form.EnableRSVP ? '1' : '0',
+        questionEnable: form.AddQuestion ? form.QuestionType : '0',
+        questionType: form.QuestionType,
+        questionText: form.QuestionText,
+        option1: form.Option1,
+        option2: form.Option2,
+        RepeatDateTime: repeatDates.join(','),
+        eventImageID: imagePreview || '',
       });
+      alert('Event updated successfully');
       navigate('/upcoming-events');
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Update failed');
@@ -149,7 +206,7 @@ export default function EditUpcomingEventPage() {
               <textarea value={form.EventDesc} onChange={(e) => setForm({ ...form, EventDesc: e.target.value })} rows={3} style={{ ...inputStyle, height: 'auto', resize: 'vertical' }} />
             </div>
 
-            {/* Event Date + Publish Date */}
+            {/* Event Date + Publish Date + Expiry Date */}
             <div style={{ display: 'flex', gap: '20px', marginBottom: '8px' }}>
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>Event Date</label>
@@ -159,6 +216,10 @@ export default function EditUpcomingEventPage() {
                 <label style={labelStyle}>Publish Date</label>
                 <input type="datetime-local" value={form.PublishDate} onChange={(e) => setForm({ ...form, PublishDate: e.target.value })} style={inputStyle} />
               </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Expiry Date</label>
+                <input type="datetime-local" value={form.ExpiryDate} onChange={(e) => setForm({ ...form, ExpiryDate: e.target.value })} style={inputStyle} />
+              </div>
             </div>
 
             {/* Event Venue */}
@@ -167,11 +228,6 @@ export default function EditUpcomingEventPage() {
               <input type="text" value={form.EventVenue} onChange={(e) => setForm({ ...form, EventVenue: e.target.value })} style={inputStyle} />
             </div>
 
-            {/* About event */}
-            <div style={{ marginBottom: '8px' }}>
-              <label style={labelStyle}>About event</label>
-              <input type="text" value={form.AboutEvent} onChange={(e) => setForm({ ...form, AboutEvent: e.target.value })} style={inputStyle} />
-            </div>
 
             {/* Registration Link */}
             <div style={{ marginBottom: '8px' }}>
@@ -184,20 +240,42 @@ export default function EditUpcomingEventPage() {
               <input type="text" value={form.RegLink} onChange={(e) => setForm({ ...form, RegLink: e.target.value })} style={inputStyle} />
             </div>
 
-            {/* Checkboxes */}
-            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={form.EnableRSVP} onChange={(e) => setForm({ ...form, EnableRSVP: e.target.checked })} />
-                Enable RSVP
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={form.AddQuestion} onChange={(e) => setForm({ ...form, AddQuestion: e.target.checked })} />
-                Add Question
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={form.RepeatNotification} onChange={(e) => setForm({ ...form, RepeatNotification: e.target.checked })} />
-                Do you want to Repeat Notification
-              </label>
+            {/* Checkboxes row + Repeat Notification panel */}
+            <div style={{ display: 'flex', marginTop: '12px', gap: '30px', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ display: 'flex', gap: '15px', marginBottom: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={form.EnableRSVP} onChange={(e) => setForm({ ...form, EnableRSVP: e.target.checked })} />
+                    Enable RSVP
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={form.AddQuestion} onChange={(e) => setForm({ ...form, AddQuestion: e.target.checked })} />
+                    Add Question
+                  </label>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={form.RepeatNotification} onChange={(e) => setForm({ ...form, RepeatNotification: e.target.checked })} />
+                  Do you want to Repeat Notification
+                </label>
+              </div>
+              {form.RepeatNotification && (
+                <div style={{ flex: 1, backgroundColor: '#f0f0f0', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ backgroundColor: '#1a297d', color: '#fff', padding: '8px 15px', fontSize: '13px', fontWeight: '600' }}>Repeat Notification :</div>
+                  <div style={{ padding: '12px 15px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>Date & Time :</div>
+                    <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                      <input type="datetime-local" value={repeatDate} onChange={(e) => setRepeatDate(e.target.value)} style={{ ...inputStyle, width: 'auto' }} />
+                      <button type="button" onClick={() => { if (repeatDate) { setRepeatDates([...repeatDates, repeatDate]); setRepeatDate(''); } }} style={{ backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '7px 16px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Add To List</button>
+                    </div>
+                    {repeatDates.length > 0 && (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', marginTop: '10px' }}>
+                        <thead><tr style={{ backgroundColor: '#1a297d', color: '#fff' }}><th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 'normal' }}>Date & Time</th><th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 'normal', width: '50px' }}>Remove</th></tr></thead>
+                        <tbody>{repeatDates.map((rd, i) => (<tr key={i} style={{ borderBottom: '1px solid #eee' }}><td style={{ padding: '6px 10px' }}>{new Date(rd).toLocaleString()}</td><td style={{ padding: '6px 8px', textAlign: 'center' }}><button onClick={() => setRepeatDates(repeatDates.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', color: '#f44336', cursor: 'pointer', fontSize: '16px' }}>&times;</button></td></tr>))}</tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -223,15 +301,45 @@ export default function EditUpcomingEventPage() {
             </div>
             <input type="file" accept="image/jpeg,image/jpg,image/png,image/gif,image/bmp" onChange={handleFileChange} style={{ fontSize: '11px', width: '180px' }} />
 
-            {/* Expiry Date */}
-            <div style={{ marginTop: '15px' }}>
-              <label style={labelStyle}>Expiry Date</label>
-              <input type="datetime-local" value={form.ExpiryDate} onChange={(e) => setForm({ ...form, ExpiryDate: e.target.value })} style={inputStyle} />
-            </div>
           </div>
 
         </div>
       </div>
+
+      {/* Event Questionaries */}
+      {form.AddQuestion && (
+        <div style={{ backgroundColor: '#fff', borderRadius: '4px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', marginTop: '15px', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: '#e0e0e0', padding: '10px 20px', fontSize: '13px', fontWeight: '600', color: '#333' }}>Event Questionaries</div>
+          <div style={{ padding: '20px 25px' }}>
+            <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', cursor: 'pointer' }}>
+                <input type="radio" name="questionTypeEdit2" value="2" checked={form.QuestionType === '2'} onChange={() => setForm({ ...form, QuestionType: '2' })} />
+                Objective Question
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', cursor: 'pointer' }}>
+                <input type="radio" name="questionTypeEdit2" value="1" checked={form.QuestionType === '1'} onChange={() => setForm({ ...form, QuestionType: '1' })} />
+                Normal Question
+              </label>
+            </div>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={labelStyle}>Question Text</label>
+              <textarea value={form.QuestionText} onChange={(e) => setForm({ ...form, QuestionText: e.target.value })} rows={3} style={{ ...inputStyle, height: 'auto', resize: 'vertical' }} />
+            </div>
+            {form.QuestionType === '2' && (
+              <>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>First Option</label>
+                  <input type="text" value={form.Option1} onChange={(e) => setForm({ ...form, Option1: e.target.value })} style={inputStyle} />
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Second Option</label>
+                  <input type="text" value={form.Option2} onChange={(e) => setForm({ ...form, Option2: e.target.value })} style={inputStyle} />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

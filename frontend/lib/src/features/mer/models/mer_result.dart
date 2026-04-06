@@ -36,11 +36,17 @@ class MerResult {
   final List<MerItem> items;
 
   factory MerResult.fromJson(Map<String, dynamic> json) {
-    // Response: { Result: { Table: [...] } }
+    // Response: { TBMERListResult: { MERListResult: [...] } }
+    // Also support: { Result: { Table: [...] } }
+    final tbResult = json['TBMERListResult'] as Map<String, dynamic>?;
+    final merList = tbResult?['MERListResult'] as List<dynamic>?;
+
     final result = json['Result'] as Map<String, dynamic>?;
-    final table = result?['Table'] as List<dynamic>? ?? [];
+    final table = result?['Table'] as List<dynamic>?;
+
+    final items = merList ?? table ?? [];
     return MerResult(
-      items: table
+      items: items
           .map((e) => MerItem.fromJson(e as Map<String, dynamic>))
           .toList(),
     );

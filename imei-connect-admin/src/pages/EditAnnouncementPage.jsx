@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import { getAnnouncements, updateAnnouncement } from '../api/announcementService';
 
@@ -23,10 +23,14 @@ function toDatetimeLocal(dateStr) {
 export default function EditAnnouncementPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const filterGroupId = searchParams.get('groupId');
+  const groupId = filterGroupId || '31185';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
+  const [pageName, setPageName] = useState('National Admin');
 
   const [form, setForm] = useState({
     AnnounTitle: '',
@@ -40,7 +44,16 @@ export default function EditAnnouncementPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await getAnnouncements('31185', '13010');
+        if (filterGroupId) {
+          try {
+            const { getClubList } = await import('../api/groupService');
+            const clubRes = await getClubList();
+            const clubs = clubRes.data?.TBGetClubResult?.ClubResult?.Table || [];
+            const found = clubs.find(c => String(c.GroupId) === filterGroupId);
+            if (found) setPageName(found.group_name);
+          } catch {}
+        }
+        const res = await getAnnouncements(groupId, '13010');
         const list = res.data?.TBAnnounceListResult?.AnnounListResult || [];
         const raw = list.find(a => {
           const aid = (a.AnnounceList || a).announID;
@@ -80,8 +93,19 @@ export default function EditAnnouncementPage() {
     setSaving(true);
     setError('');
     try {
-      await updateAnnouncement(id, form);
-      navigate('/announcements');
+      await updateAnnouncement(id, {
+        grpID: groupId,
+        memID: '13010',
+        announTitle: form.AnnounTitle,
+        announceDEsc: form.AnnounDesc,
+        publishDate: form.PublishDate,
+        expiryDate: form.ExpiryDate,
+        reglink: form.RegLink,
+        moduleId: '3',
+        announImg: imagePreview || '',
+      });
+      alert('Announcement updated successfully');
+      navigate(-1);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Update failed');
     } finally { setSaving(false); }
@@ -94,7 +118,7 @@ export default function EditAnnouncementPage() {
       {/* Title Row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
-          <span style={{ color: '#1a297d', fontSize: '14px' }}>National Admin - Announcements</span>
+          <span style={{ color: '#1a297d', fontSize: '14px' }}>{pageName}</span>
           <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#333' }}> - Edit Announcements</span>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -112,7 +136,7 @@ export default function EditAnnouncementPage() {
             Update
           </button>
           <button
-            onClick={() => navigate('/announcements')}
+            onClick={() => navigate(-1)}
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
               backgroundColor: '#1a297d', color: '#fff', border: 'none',

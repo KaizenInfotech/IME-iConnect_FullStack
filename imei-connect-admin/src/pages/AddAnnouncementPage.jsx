@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createAnnouncement } from '../api/announcementService';
 
 const inputStyle = {
@@ -14,6 +14,8 @@ const labelStyle = {
 
 export default function AddAnnouncementPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const filterGroupId = searchParams.get('groupId');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
@@ -41,11 +43,23 @@ export default function AddAnnouncementPage() {
     if (!form.AnnounTitle.trim()) { alert('Please Enter Title'); return; }
     if (!form.PublishDate) { alert('Please Enter Publish Date & Time'); return; }
     if (!form.ExpiryDate) { alert('Please Enter Expiry Date & Time'); return; }
+    if (new Date(form.ExpiryDate) <= new Date(form.PublishDate)) { alert('Expiry Date must be greater than Publish Date'); return; }
     setSaving(true);
     setError('');
     try {
-      await createAnnouncement(form);
-      navigate('/announcements');
+      await createAnnouncement({
+        grpID: filterGroupId || '31185',
+        memID: '13010',
+        announTitle: form.AnnounTitle,
+        announceDEsc: form.AnnounDesc,
+        publishDate: form.PublishDate,
+        expiryDate: form.ExpiryDate,
+        reglink: form.RegLink,
+        moduleId: '3',
+        announImg: imagePreview || '',
+      });
+      alert('Announcement added successfully');
+      navigate(`/announcements${filterGroupId ? `?groupId=${filterGroupId}` : ''}`);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Save failed');
     } finally { setSaving(false); }
@@ -56,7 +70,7 @@ export default function AddAnnouncementPage() {
       {/* Title Row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
-          <span style={{ color: '#1a297d', fontSize: '14px' }}>National Admin - Announcements</span>
+          <span style={{ color: '#1a297d', fontSize: '14px' }}>{filterGroupId ? 'Chapter' : 'National Admin'} - Announcements</span>
           <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#333' }}> - Add Announcements</span>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -74,7 +88,7 @@ export default function AddAnnouncementPage() {
             Save
           </button>
           <button
-            onClick={() => navigate('/announcements')}
+            onClick={() => navigate(`/announcements${filterGroupId ? `?groupId=${filterGroupId}` : ''}`)}
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
               backgroundColor: '#1a297d', color: '#fff', border: 'none',

@@ -115,7 +115,9 @@ class TBGetRotarianResult extends BaseModel {
   final List<RotarianItem>? rotarians;
 
   factory TBGetRotarianResult.fromJson(Map<String, dynamic> json) {
-    final result = json['RotarianResult'] as List<dynamic>?;
+    // Support both old format (RotarianResult) and new format (FindRotarianResult)
+    final result = json['RotarianResult'] as List<dynamic>? ??
+        json['FindRotarianResult'] as List<dynamic>?;
 
     return TBGetRotarianResult(
       status: BaseModel.safeString(json['status']),
@@ -214,9 +216,8 @@ class TBRotarianDetailResult extends BaseModel {
   final RotarianDetail? detail;
 
   factory TBRotarianDetailResult.fromJson(Map<String, dynamic> json) {
-    // iOS: JitoProfileViewController uses lowercase "result",
-    // MemberSearchProfileViewController uses uppercase "Result"
-    final result = json['Result'] ?? json['result'];
+    // Support old format (Result.Table[0]) and new format (RotarianDetailsResult as flat object)
+    final result = json['Result'] ?? json['result'] ?? json['RotarianDetailsResult'];
     Map<String, dynamic>? profileData;
 
     if (result is Map<String, dynamic>) {
@@ -456,6 +457,7 @@ class RotarianDetail extends BaseModel {
     }
 
     add('Chapter/Branch Name', chaptrBrnchName ?? clubName);
+    add('Mobile No.', whatsappNum ?? memberMobile);
     add('Membership No.', membershipNo);
     add('Membership Grade', membershipGrade);
     add('Category', categoryName);

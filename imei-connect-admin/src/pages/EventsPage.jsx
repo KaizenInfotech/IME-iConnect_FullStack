@@ -1,32 +1,40 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import { getEvents, deleteEvent } from '../api/eventService';
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 export default function EventsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const filterGroupId = searchParams.get('groupId');
-  const [pageName, setPageName] = useState('National Admin');
+  const [pageName, setPageName] = useState('');
+  const [allEvents, setAllEvents] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalRecords, setTotalRecords] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  // Filters
-  const [year, setYear] = useState(new Date().getFullYear().toString());
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('All');
+  useEffect(() => { fetchData(); }, []);
 
-  useEffect(() => { fetchData(); }, [page, year, filter]);
+  useEffect(() => {
+    if (!searchTerm.trim()) { setEvents(allEvents); return; }
+    const q = searchTerm.toLowerCase();
+    setEvents(allEvents.filter(ev => (ev.eventTitle || '').toLowerCase().includes(q)));
+  }, [searchTerm, allEvents]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const groupId = filterGroupId || '33359';
-      const profileId = '13010';
       if (filterGroupId) {
         try {
           const { getClubList } = await import('../api/groupService');
@@ -36,221 +44,87 @@ export default function EventsPage() {
           if (found) setPageName(found.group_name);
         } catch {}
       }
-      const res = await getEvents(groupId, profileId, '0');
-      const records = res.data?.EventListDetailResult?.EventListResult || res.data?.Result || [];
-      setEvents(Array.isArray(records) ? records : []);
-      setTotalPages(1);
-      setTotalRecords(Array.isArray(records) ? records.length : 0);
-    } catch {
-      setError('Failed to load events');
-    } finally {
-      setLoading(false);
-    }
+      const res = await getEvents(groupId, '13010', '0');
+      const records = res.data?.EventsListResult || res.data?.EventListDetailResult?.EventListResult || res.data?.Result || [];
+      setAllEvents(Array.isArray(records) ? records : []);
+    } catch { setError('Failed to load events'); }
+    finally { setLoading(false); }
   };
 
-  const handleSearch = () => {
-    setPage(1);
-    fetchData();
-  };
-
-  const handleDelete = async (ev) => {
-    if (!window.confirm('Are you sure you want to delete?')) return;
+  const handleDelete = async () => {
     try {
-      await deleteEvent(ev.id || ev._id);
+      await deleteEvent(deleteTarget.eventID || deleteTarget.id);
+      alert('Event deleted successfully');
+      setDeleteTarget(null);
       fetchData();
-    } catch {
-      setError('Delete failed');
-    }
+    } catch { setError('Delete failed'); }
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-';
-    try {
-      const d = new Date(dateStr);
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const yr = d.getFullYear();
-      return `${day}/${month}/${yr}`;
-    } catch {
-      return dateStr.substring(0, 10);
-    }
-  };
-
-  // Year options
-  const currentYear = new Date().getFullYear();
-  const yearOptions = [];
-  for (let y = currentYear; y >= currentYear - 5; y--) {
-    yearOptions.push(y.toString());
-  }
-
-  // Pagination
-  const renderPagination = () => {
-    if (totalPages <= 1) return null;
-    const pages = [];
-    const maxVisible = 5;
-    let start = Math.max(1, page - Math.floor(maxVisible / 2));
-    let end = Math.min(totalPages, start + maxVisible - 1);
-    if (end - start + 1 < maxVisible) {
-      start = Math.max(1, end - maxVisible + 1);
-    }
-
-    pages.push(
-      <button
-        key="prev"
-        onClick={() => setPage((p) => Math.max(1, p - 1))}
-        disabled={page === 1}
-        className="px-[8px] py-[4px] border border-[#ddd] bg-white text-[12px] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#f5f5f5]"
-      >
-        &laquo;
-      </button>
-    );
-    for (let i = start; i <= end; i++) {
-      pages.push(
-        <button
-          key={i}
-          onClick={() => setPage(i)}
-          className={`px-[10px] py-[4px] border border-[#ddd] text-[12px] ${
-            i === page ? 'bg-[#1a297d] text-white' : 'bg-white text-[#333] hover:bg-[#f5f5f5]'
-          }`}
-        >
-          {i}
-        </button>
-      );
-    }
-    pages.push(
-      <button
-        key="next"
-        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-        disabled={page === totalPages}
-        className="px-[8px] py-[4px] border border-[#ddd] bg-white text-[12px] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#f5f5f5]"
-      >
-        &raquo;
-      </button>
-    );
-    return <div className="flex items-center justify-center gap-[2px] mt-[10px]">{pages}</div>;
-  };
-
-  if (loading && events.length === 0) return <LoadingSpinner />;
+  if (loading) return <LoadingSpinner className="h-screen" />;
 
   return (
     <div>
-      {/* Page Title */}
+      {/* Title Row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <div>
-          <span style={{ color: '#1a297d', fontSize: '14px' }}>{pageName}</span>
-          <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#333' }}>{filterGroupId ? ' - Past Events' : ' - Events'}</span>
+          <span style={{ color: '#1a297d', fontSize: '14px' }}>{pageName || 'Chapter'}</span>
+          <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#333' }}> - Event</span>
         </div>
-      </div>
-
-      {/* Top Controls */}
-      <div className="flex items-center gap-[8px] mb-[15px] flex-wrap">
-        {/* Filter dropdown - left */}
-        <select
-          value={filter}
-          onChange={(e) => { setFilter(e.target.value); setPage(1); }}
-          className="h-[35px] rounded-[8px] border border-[#d0d0d0] px-[10px] text-[13px] outline-none"
-        >
-          <option value="All">All</option>
-          <option value="Published">Published</option>
-          <option value="Unpublished">Unpublished</option>
-          <option value="Expired">Expired</option>
-        </select>
-        <select
-          value={year}
-          onChange={(e) => { setYear(e.target.value); setPage(1); }}
-          className="h-[35px] rounded-[8px] border border-[#d0d0d0] px-[10px] text-[13px] outline-none"
-        >
-          {yearOptions.map((y) => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
-        <input
-          type="text"
-          placeholder="Search..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          className="h-[35px] rounded-[8px] border border-[#d0d0d0] px-[10px] text-[13px] outline-none w-[200px]"
-        />
-        {/* Add Album & Back - right */}
-        <div className="ml-auto flex items-center gap-[8px]">
-          <button
-            onClick={() => navigate('/events/new')}
-            className="px-[12px] py-[6px] text-[13px] text-white rounded-[4px] border-0 cursor-pointer"
-            style={{ backgroundColor: '#e3a712' }}
-          >
-            Add Album
-          </button>
-          <button
-            onClick={() => navigate(-1)}
-            className="px-[16px] py-[6px] text-[13px] text-white rounded-[4px] border-0 cursor-pointer bg-[#1a297d]"
-          >
-            ← Back
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <input
+            type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search"
+            style={{ height: '32px', border: '1px solid #ccc', borderRadius: '4px', padding: '4px 10px', fontSize: '13px', outline: 'none', width: '150px' }}
+          />
+          <button onClick={() => navigate(`/events/new${filterGroupId ? `?groupId=${filterGroupId}` : ''}`)} style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer' }}>+ Add Event</button>
+          <button onClick={() => filterGroupId ? navigate(`/groups/${filterGroupId}`) : navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer' }}>
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+            Back
           </button>
         </div>
       </div>
 
       {error && (
-        <div className="bg-[#fdf2f2] text-[#dd4b39] px-[15px] py-[10px] rounded-[4px] mb-[15px] text-[13px]">
-          {error}
+        <div style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '10px 16px', borderRadius: '4px', marginBottom: '12px', fontSize: '13px' }}>
+          {error}<button onClick={() => setError('')} style={{ float: 'right', background: 'none', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>&times;</button>
         </div>
       )}
 
       {/* Table */}
-      <div
-        className="bg-white border border-[#eee] rounded-[8px]"
-        style={{ padding: '25px 28px 10px 28px' }}
-      >
-        <table className="w-full border-collapse text-[13px]">
+      <div style={{ backgroundColor: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 3px 5px 0px rgba(0,0,0,0.06)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
-            <tr className="bg-[#1a297d] text-white">
-              <th className="p-[8px] text-left font-normal" style={{ width: '5%' }}>Sr.No.</th>
-              <th className="p-[8px] text-left font-normal" style={{ width: '10%' }}>Date</th>
-              <th className="p-[8px] text-left font-normal" style={{ width: '65%' }}>Title</th>
-              <th className="p-[8px] text-center font-normal" style={{ width: '5%' }}>Attendance</th>
-              <th className="p-[8px] text-center font-normal" style={{ width: '5%' }}>Attendance(%)</th>
-              <th className="p-[8px] text-center font-normal" style={{ width: '5%' }}>Edit</th>
-              <th className="p-[8px] text-center font-normal" style={{ width: '5%' }}>Delete</th>
+            <tr style={{ backgroundColor: '#1a297d', color: '#fff' }}>
+              <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal', width: '50px' }}>Sr.No.</th>
+              <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal', width: '120px' }}>Date</th>
+              <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 'normal' }}>Title</th>
+              <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 'normal', width: '100px' }}>Attendance</th>
+              <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 'normal', width: '110px' }}>Attendance(%)</th>
+              <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 'normal', width: '60px' }}>Edit</th>
+              <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 'normal', width: '60px' }}>Delete</th>
             </tr>
           </thead>
           <tbody>
             {events.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-[15px] text-center text-[#999]">
-                  No events found
-                </td>
-              </tr>
+              <tr><td colSpan={7} style={{ padding: '30px', textAlign: 'center', color: '#999' }}>No events found</td></tr>
             ) : (
               events.map((ev, idx) => (
-                <tr
-                  key={ev.id || ev._id || idx}
-                  className={`border-b border-[#eee] hover:bg-[#f9f9f9] ${
-                    idx % 2 === 0 ? 'bg-white' : 'bg-[#f9f9f9]'
-                  }`}
-                >
-                  <td className="p-[8px]">{(page - 1) * 20 + idx + 1}</td>
-                  <td className="p-[8px]">{formatDate(ev.EventDate)}</td>
-                  <td className="p-[8px]">{ev.Title || '-'}</td>
-                  <td className="p-[8px] text-center">{ev.Attendance ?? ev.AttendanceCount ?? '-'}</td>
-                  <td className="p-[8px] text-center">
-                    {ev.AttendancePercent != null ? `${ev.AttendancePercent}%` : '-'}
-                  </td>
-                  <td className="p-[8px] text-center">
-                    <button
-                      onClick={() => navigate(`/events/${ev.id || ev._id}`)}
-                      className="text-[#1a297d] hover:text-[#092c5e] border-0 bg-transparent cursor-pointer"
-                      title="Edit"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                <tr key={ev.eventID || idx} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f8f8f8', borderBottom: '1px solid #eee' }}>
+                  <td style={{ padding: '10px 12px', color: '#333' }}>{idx + 1}</td>
+                  <td style={{ padding: '10px 12px', color: '#333' }}>{formatDate(ev.eventDateTime || ev.EventDate)}</td>
+                  <td style={{ padding: '10px 16px', color: '#333' }}>{ev.eventTitle || ev.Title || '-'}</td>
+                  <td style={{ padding: '10px 8px', textAlign: 'center', color: '#333' }}>{ev.Attendance || '-'}</td>
+                  <td style={{ padding: '10px 8px', textAlign: 'center', color: '#333' }}>{ev.AttendancePercent ? `${ev.AttendancePercent}` : '-'}</td>
+                  {/* Edit */}
+                  <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                    <button onClick={() => navigate(`/events/${ev.eventID || ev.id}${filterGroupId ? `?groupId=${filterGroupId}` : ''}`)} title="Edit" style={{ width: '28px', height: '28px', borderRadius: '4px', backgroundColor: '#0ead9a', color: '#fff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                     </button>
                   </td>
-                  <td className="p-[8px] text-center">
-                    <button
-                      onClick={() => handleDelete(ev)}
-                      className="text-[#e87e04] hover:text-[#c56a00] border-0 bg-transparent cursor-pointer"
-                      title="Delete"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                  {/* Delete */}
+                  <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                    <button onClick={() => setDeleteTarget(ev)} title="Delete" style={{ width: '28px', height: '28px', borderRadius: '4px', backgroundColor: '#f44336', color: '#fff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                   </td>
                 </tr>
@@ -258,15 +132,9 @@ export default function EventsPage() {
             )}
           </tbody>
         </table>
-
-        {/* Pagination */}
-        {renderPagination()}
-        {totalRecords > 0 && (
-          <div className="text-[11px] text-[#999] text-center mt-[6px] mb-[10px]">
-            Showing {(page - 1) * 20 + 1} - {Math.min(page * 20, totalRecords)} of {totalRecords} records
-          </div>
-        )}
       </div>
+
+      <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="Delete Event" message={`Are you sure you want to delete "${deleteTarget?.eventTitle}"?`} />
     </div>
   );
 }

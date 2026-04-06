@@ -47,6 +47,7 @@ export default function AddIMelangePage() {
         TransType: '2',
         FinanceYear: String(new Date().getFullYear()),
       });
+      alert('iMelange added successfully');
       navigate('/imelange');
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Save failed');

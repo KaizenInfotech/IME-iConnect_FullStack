@@ -96,6 +96,34 @@ public class MemberController : ControllerBase
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
 
+    [HttpPost("ReorderBOD")]
+    public async Task<IActionResult> ReorderBOD([FromBody] List<ReorderItem> items)
+    {
+        try { return Ok(await _memberService.ReorderBOD(items)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+
+    [HttpPost("GetBODDetails")]
+    public async Task<IActionResult> GetBODDetails([FromBody] BODDetailRequest request)
+    {
+        try { return Ok(await _memberService.GetBODDetails(request.BOD_PkID ?? "", request.YearFilter ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+
+    [HttpPost("DeleteBOD")]
+    public async Task<IActionResult> DeleteBOD([FromBody] DeleteBODRequest request)
+    {
+        try { return Ok(await _memberService.DeleteBOD(request.BOD_PkID ?? "", request.YearFilter ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+
+    [HttpPost("UpdateBOD")]
+    public async Task<IActionResult> UpdateBOD([FromBody] UpdateBODRequest request)
+    {
+        try { return Ok(await _memberService.UpdateBOD(request)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+
     // Note: iOS typo "UpdateMemebr" preserved
     [HttpPost("UpdateMemebr")]
     public async Task<IActionResult> UpdateMember([FromBody] UpdateMemberRequest request)
@@ -131,9 +159,58 @@ public class MemberController : ControllerBase
         try { return Ok(await _memberService.DeleteMember(request.memberProfileId ?? "")); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("AddMember")]
+    public async Task<IActionResult> AddMember([FromBody] WebAddMemberRequest request)
+    {
+        try { return Ok(await _memberService.AddMember(request)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
 }
 
 public class DeleteMemberRequest
 {
     public string? memberProfileId { get; set; }
+}
+
+public class WebAddMemberRequest
+{
+    public string? grpID { get; set; }
+    public string? firstName { get; set; }
+    public string? middleName { get; set; }
+    public string? lastName { get; set; }
+    public string? mobileNo { get; set; }
+    public string? emailID { get; set; }
+    public string? countryCode { get; set; }
+    public string? dob { get; set; }
+    public string? doa { get; set; }
+    public string? bloodGrp { get; set; }
+    public string? secondaryMobileNo { get; set; }
+    public string? membershipId { get; set; }
+    public string? membershipGrade { get; set; }
+    public string? category { get; set; }
+    public string? companyName { get; set; }
+    public string? chapterBranchName { get; set; }
+    public string? address { get; set; }
+    public string? city { get; set; }
+    public string? state { get; set; }
+    public string? pincode { get; set; }
+    public string? country { get; set; }
+}
+
+public class ReorderItem { public int MemberId { get; set; } public int DisplayOrder { get; set; } }
+public class BODDetailRequest { public string? BOD_PkID { get; set; } public string? YearFilter { get; set; } }
+public class DeleteBODRequest { public string? BOD_PkID { get; set; } public string? YearFilter { get; set; } }
+public class UpdateBODRequest
+{
+    public string? BOD_PkID { get; set; }
+    public string? memberProfileID { get; set; }
+    public string? groupId { get; set; }
+    public string? designation { get; set; }
+    public string? otherDesignation { get; set; }
+    public string? name { get; set; }
+    public string? emailID { get; set; }
+    public string? phoneNo { get; set; }
+    public string? yearFilter { get; set; }
+    public string? chapterId { get; set; }
 }

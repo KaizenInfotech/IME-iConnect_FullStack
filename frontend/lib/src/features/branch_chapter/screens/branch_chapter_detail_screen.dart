@@ -65,7 +65,7 @@ class _BranchChapterDetailScreenState extends State<BranchChapterDetailScreen>
                   AppTextStyles.body2.copyWith(fontWeight: FontWeight.w700),
               unselectedLabelStyle: AppTextStyles.body2,
               tabs: const [
-                Tab(text: 'OFFICE BARRIERS'),
+                Tab(text: 'OFFICE BEARERS'),
                 Tab(text: 'Members'),
               ],
             ),

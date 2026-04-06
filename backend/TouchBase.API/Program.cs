@@ -11,6 +11,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 // --- Database ---
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+if (!connectionString.Contains("AllowZeroDateTime", StringComparison.OrdinalIgnoreCase))
+    connectionString += ";AllowZeroDateTime=True;ConvertZeroDateTime=True";
+if (!connectionString.Contains("ConnectionReset", StringComparison.OrdinalIgnoreCase))
+    connectionString += ";ConnectionReset=true";
+if (!connectionString.Contains("UseAffectedRows", StringComparison.OrdinalIgnoreCase))
+    connectionString += ";UseAffectedRows=false;NoBackslashEscapes=false";
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 36))));
 

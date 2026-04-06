@@ -12,7 +12,7 @@ export default function Navbar({ onToggleSidebar }) {
     navigate('/login');
   };
 
-  const userName = user?.firstName || user?.mobileNo || 'User';
+  const userName = user?.name || user?.firstName || user?.mobileNo || 'User';
 
   return (
     <header
@@ -65,7 +65,7 @@ export default function Navbar({ onToggleSidebar }) {
               <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
             </svg>
           </span>
-          <span>Welcome {userName} &gt;</span>
+          <span>{userName}</span>
         </button>
 
         {dropdownOpen && (
@@ -77,7 +77,7 @@ export default function Navbar({ onToggleSidebar }) {
               boxShadow: '0 6px 12px rgba(0,0,0,.175)',
             }}>
               <button
-                onClick={() => { setDropdownOpen(false); navigate('/settings'); }}
+                onClick={() => { setDropdownOpen(false); navigate('/change-password'); }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '12px 20px', fontSize: '13px',
                   display: 'flex', alignItems: 'center', gap: '8px',

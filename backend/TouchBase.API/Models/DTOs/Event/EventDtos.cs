@@ -50,6 +50,8 @@ public class AddEventRequest
     public string? reglink { get; set; }
     public string? isSubGrpAdmin { get; set; }
     public string? Projectname { get; set; }
+    public string? attendance { get; set; }
+    public string? attendancePercent { get; set; }
 }
 
 public class AnswerEventRequest
@@ -99,6 +101,8 @@ public class EventListItemDto
     public string? venueLat { get; set; }
     public string? venueLon { get; set; }
     public string? grpAdminId { get; set; }
+    public string? Attendance { get; set; }
+    public string? AttendancePercent { get; set; }
 }
 
 public class EventDetailResponse
@@ -153,6 +157,8 @@ public class EventsDetailDto
     public string? isAdmin { get; set; }
     public string? memberprofileid { get; set; }
     public string? link { get; set; }
+    public string? Attendance { get; set; }
+    public string? AttendancePercent { get; set; }
 }
 
 public class RepeatEventDto

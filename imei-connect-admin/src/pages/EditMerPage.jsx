@@ -94,6 +94,7 @@ export default function EditMerPage() {
         FilePath: form.SaveType === 'file' ? (form.FilePath || form.File?.name || '') : '',
         TransType: '1',
       });
+      alert('MER(I) updated successfully');
       navigate('/mer');
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Update failed');

@@ -82,6 +82,7 @@ export default function EditIMelangePage() {
         FilePath: form.SaveType === 'file' ? (form.FilePath || form.File?.name || '') : '',
         TransType: '2',
       });
+      alert('iMelange updated successfully');
       navigate('/imelange');
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Update failed');

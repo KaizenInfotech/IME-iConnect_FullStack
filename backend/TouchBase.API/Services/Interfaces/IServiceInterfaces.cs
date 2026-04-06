@@ -34,6 +34,7 @@ public interface IAuthService
     Task<object> Register(RegistrationRequest request);
     Task<object> WebLogin(string mobileNo, string password, string countryCode = "1");
     Task<object> ForgotPassword(string mobileNo);
+    Task<object> ChangePassword(string mobileNo, string oldPassword, string newPassword);
 }
 
 public interface IDashboardService
@@ -96,11 +97,16 @@ public interface IMemberService
     Task<object> UploadProfilePhoto(IFormFile file, ProfilePhotoRequest request);
     Task<object> GetBodList(BodListRequest request);
     Task<object> GetGoverningCouncil(GoverningCouncilRequest request);
+    Task<object> GetBODDetails(string bodPkId, string yearFilter);
+    Task<object> DeleteBOD(string bodPkId, string yearFilter);
+    Task<object> UpdateBOD(UpdateBODRequest request);
+    Task<object> ReorderBOD(List<ReorderItem> items);
     Task<UpdateResponse> UpdateMember(UpdateMemberRequest request);
     Task<UpdateResponse> UpdateProfilePersonalDetails(UpdatePersonalDetailsRequest request);
     Task<object> SaveProfile(SaveProfileRequest request);
     Task<object> GetMemberDetails(string? memProfileId, string? grpId);
     Task<object> DeleteMember(string memberProfileId);
+    Task<object> AddMember(WebAddMemberRequest request);
 }
 
 public interface IEventService
@@ -111,6 +117,8 @@ public interface IEventService
     Task<AnswerEventResponse> AnswerEvent(AnswerEventRequest request);
     Task<SmsCountResponse> GetSmsCountDetails(SmsCountRequest request);
     Task<object> DeleteEvent(string eventId);
+    Task<object> GetEventExtras(string eventId);
+    Task<object> SaveEventExtras(SaveEventExtrasRequest request);
 }
 
 public interface IAnnouncementService

@@ -47,4 +47,4 @@ export const updateGroup = (id, data) =>
   });
 
 export const deleteGroup = (id) =>
-  api.post('/Group/DeleteGroup', { groupId: id });
+  api.post('/Group/DeleteGroup', { groupId: String(id) });

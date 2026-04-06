@@ -47,6 +47,7 @@ export default function AddMerPage() {
         TransType: '1',
         FinanceYear: String(new Date().getFullYear()),
       });
+      alert('MER(I) added successfully');
       navigate('/mer');
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Save failed');

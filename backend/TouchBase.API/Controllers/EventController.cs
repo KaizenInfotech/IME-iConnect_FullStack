@@ -52,6 +52,29 @@ public class EventController : ControllerBase
         try { return Ok(await _eventService.DeleteEvent(request.eventId ?? "")); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("GetEventExtras")]
+    public async Task<IActionResult> GetEventExtras([FromBody] EventExtrasRequest request)
+    {
+        try { return Ok(await _eventService.GetEventExtras(request.eventID ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+
+    [HttpPost("SaveEventExtras")]
+    public async Task<IActionResult> SaveEventExtras([FromBody] SaveEventExtrasRequest request)
+    {
+        try { return Ok(await _eventService.SaveEventExtras(request)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
 }
 
 public class DeleteEventRequest { public string? eventId { get; set; } }
+public class EventExtrasRequest { public string? eventID { get; set; } }
+public class SaveEventExtrasRequest
+{
+    public string? eventID { get; set; }
+    public List<EventPhotoInput>? photos { get; set; }
+    public List<string>? agendaFileNames { get; set; }
+    public List<string>? minutesFileNames { get; set; }
+}
+public class EventPhotoInput { public string? photoPath { get; set; } public string? description { get; set; } }

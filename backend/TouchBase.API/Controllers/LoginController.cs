@@ -66,9 +66,23 @@ public class LoginController : ControllerBase
         try { return Ok(await _authService.ForgotPassword(request.mobileNo ?? "")); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("ChangePassword")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        try { return Ok(await _authService.ChangePassword(request.mobileNo ?? "", request.oldPassword ?? "", request.newPassword ?? "")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
 }
 
 public class ForgotPasswordRequest { public string? mobileNo { get; set; } }
+
+public class ChangePasswordRequest
+{
+    public string? mobileNo { get; set; }
+    public string? oldPassword { get; set; }
+    public string? newPassword { get; set; }
+}
 
 public class WebLoginRequest
 {

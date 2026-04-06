@@ -32,7 +32,8 @@ export default function MembersPage() {
       setMembers(allMembers.filter(m =>
         (m.MemberName || m.memberName || '').toLowerCase().includes(q) ||
         (m.MemberEmail || m.memberEmail || '').toLowerCase().includes(q) ||
-        (m.MemberMobile || m.memberMobile || '').includes(q)
+        (m.MemberMobile || m.memberMobile || '').includes(q) ||
+        (m.member_IMEI_id || m.MembershipId || m.membershipId || '').toString().toLowerCase().includes(q)
       ));
     }
     setPageNo(1);
@@ -90,36 +91,36 @@ export default function MembersPage() {
 
   const renderPagination = () => {
     if (totalPages <= 1) return null;
-    const maxVisible = 8;
+    const maxVisible = 7;
+    let startPage = Math.max(1, pageNo - Math.floor(maxVisible / 2));
+    let endPage = startPage + maxVisible - 1;
+    if (endPage > totalPages) { endPage = totalPages; startPage = Math.max(1, endPage - maxVisible + 1); }
+
     const pages = [];
-    for (let i = 1; i <= Math.min(totalPages, maxVisible); i++) pages.push(i);
+    for (let i = startPage; i <= endPage; i++) pages.push(i);
+
+    const btnStyle = { padding: '3px 8px', borderRadius: '3px', color: '#1a297d', textDecoration: 'none', border: '1px solid #ddd', cursor: 'pointer', background: 'none' };
+    const activeStyle = { backgroundColor: '#1a297d', color: '#fff', padding: '3px 8px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid #1a297d' };
 
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '8px 0', fontSize: '12px' }}>
+        {pageNo > 1 && (
+          <>
+            <a href="#" onClick={(e) => { e.preventDefault(); setPageNo(1); }} style={btnStyle}>First</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); setPageNo(pageNo - 1); }} style={btnStyle}>&laquo;</a>
+          </>
+        )}
         {pages.map(p => (
           p === pageNo ? (
-            <span key={p} style={{
-              backgroundColor: '#1a297d', color: '#fff',
-              padding: '3px 8px', borderRadius: '3px', fontWeight: 'bold',
-            }}>{p}</span>
+            <span key={p} style={activeStyle}>{p}</span>
           ) : (
-            <a key={p} href="#" onClick={(e) => { e.preventDefault(); setPageNo(p); }} style={{
-              padding: '3px 8px', borderRadius: '3px', color: '#1a297d',
-              textDecoration: 'none', border: '1px solid #ddd',
-            }}>{p}</a>
+            <a key={p} href="#" onClick={(e) => { e.preventDefault(); setPageNo(p); }} style={btnStyle}>{p}</a>
           )
         ))}
-        {totalPages > maxVisible && (
+        {pageNo < totalPages && (
           <>
-            <span style={{ padding: '3px 4px', color: '#999' }}>...</span>
-            <a href="#" onClick={(e) => { e.preventDefault(); if (pageNo < totalPages) setPageNo(pageNo + 1); }} style={{
-              padding: '3px 8px', borderRadius: '3px', color: '#1a297d',
-              textDecoration: 'none', border: '1px solid #ddd',
-            }}>&gt;</a>
-            <a href="#" onClick={(e) => { e.preventDefault(); setPageNo(totalPages); }} style={{
-              padding: '3px 8px', borderRadius: '3px', color: '#1a297d',
-              textDecoration: 'none', border: '1px solid #ddd',
-            }}>Last</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); setPageNo(pageNo + 1); }} style={btnStyle}>&raquo;</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); setPageNo(totalPages); }} style={btnStyle}>Last</a>
           </>
         )}
       </div>
@@ -158,7 +159,7 @@ export default function MembersPage() {
               onClick={() => navigate('/members/add')}
               style={{
                 display: 'flex', alignItems: 'center', gap: '4px',
-                backgroundColor: '#6b9300', color: '#fff', border: 'none',
+                backgroundColor: '#1a297d', color: '#fff', border: 'none',
                 padding: '6px 14px', borderRadius: '4px', fontSize: '13px',
                 cursor: 'pointer', whiteSpace: 'nowrap',
               }}
@@ -168,7 +169,7 @@ export default function MembersPage() {
           )}
           {/* Back */}
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => filterGroupId ? navigate(`/groups/${filterGroupId}`) : navigate(-1)}
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
               backgroundColor: '#1a297d', color: '#fff', border: 'none',
@@ -199,7 +200,7 @@ export default function MembersPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
           <thead>
             <tr style={{ backgroundColor: '#1a297d', color: '#fff' }}>
-              <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal', width: '50px' }}>Photo</th>
+              <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal' }}>Membership ID</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal' }}>Name</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal' }}>Chapter / Branch Name</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal' }}>Mobile No</th>
@@ -219,7 +220,7 @@ export default function MembersPage() {
                 const chapter = m.GrpName || m.GroupName || '';
                 const mobile = m.memberMobile || m.MemberMobile || '';
                 const email = m.memberEmail || m.MemberEmail || '';
-                const photo = m.profilePic || m.ProfilePic || '';
+                const membershipId = m.member_IMEI_id || m.MembershipId || m.membershipId || '';
 
                 return (
                   <tr
@@ -229,22 +230,8 @@ export default function MembersPage() {
                       borderBottom: '1px solid #eee',
                     }}
                   >
-                    {/* Photo */}
-                    <td style={{ padding: '6px 12px' }}>
-                      <div style={{
-                        width: '30px', height: '30px', borderRadius: '50%',
-                        backgroundColor: '#e0e0e0', overflow: 'hidden',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        {photo ? (
-                          <img src={photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          <svg width="16" height="16" fill="#999" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                      </div>
-                    </td>
+                    {/* Membership ID */}
+                    <td style={{ padding: '8px 12px', color: '#555' }}>{membershipId}</td>
                     {/* Name */}
                     <td style={{ padding: '8px 12px', color: '#333' }}>{name}</td>
                     {/* Chapter / Branch Name */}
@@ -256,7 +243,7 @@ export default function MembersPage() {
                     {/* Edit - green circle */}
                     <td style={{ padding: '8px 8px', textAlign: 'center' }}>
                       <button
-                        onClick={() => navigate(`/members/${mId}?groupId=${m.grpID || m.GroupId || filterGroupId || ''}`)}
+                        onClick={() => navigate(`/members/${mId}${filterGroupId ? `?groupId=${filterGroupId}` : ''}`)}
                         title="Edit"
                         style={{
                           width: '26px', height: '26px', borderRadius: '50%',

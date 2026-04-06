@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Modal from '../components/shared/Modal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
-import { getClubList, createGroup } from '../api/groupService';
+import { getClubList, createGroup, deleteGroup } from '../api/groupService';
 
 const emptyForm = {
   GrpName: '', GrpType: '', GrpCategory: '', Address1: '',
@@ -70,11 +70,21 @@ export default function GroupsPage() {
   };
 
   const handleDelete = async () => {
+    const target = deleteTarget;
+    if (!target) return;
+    setDeleteTarget(null);
     try {
-      await deleteGroup(deleteTarget.Id || deleteTarget.id);
-      setDeleteTarget(null);
-      fetchData();
-    } catch { setError('Delete failed'); }
+      const groupId = target.Id || target.id || target.GroupId;
+      const res = await deleteGroup(groupId);
+      if (res.data?.status === '0') {
+        alert('Chapter deleted successfully');
+        fetchData();
+      } else {
+        setError(res.data?.message || 'Delete failed');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Delete failed');
+    }
   };
 
   if (loading) return <LoadingSpinner className="h-screen" />;
@@ -92,7 +102,7 @@ export default function GroupsPage() {
             onClick={() => navigate('/groups/add')}
             style={{
               display: 'flex', alignItems: 'center', gap: '4px',
-              backgroundColor: '#6b9300', color: '#fff', border: 'none',
+              backgroundColor: '#1a297d', color: '#fff', border: 'none',
               padding: '7px 16px', borderRadius: '4px', fontSize: '13px',
               cursor: 'pointer', fontWeight: '500',
             }}

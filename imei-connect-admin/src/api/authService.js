@@ -11,3 +11,6 @@ export const verifyOtp = (data) =>
 
 export const getWelcomeScreen = (masterUID) =>
   api.post('/Login/GetWelcomeScreen', { masterUID });
+
+export const changePassword = (mobileNo, oldPassword, newPassword) =>
+  api.post('/Login/ChangePassword', { mobileNo, oldPassword, newPassword });

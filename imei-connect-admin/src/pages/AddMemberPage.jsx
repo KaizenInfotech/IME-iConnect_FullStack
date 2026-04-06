@@ -29,13 +29,15 @@ const sectionHeaderStyle = {
 };
 
 const bloodGroups = ['- Select -', 'A +ve', 'A -ve', 'B +ve', 'B -ve', 'AB +ve', 'AB -ve', 'O +ve', 'O -ve'];
-const membershipGrades = ['-Select-', 'Fellow', 'Member', 'Associate Member', 'Student', 'Technician'];
-const categoryOptions = ['-Select-', 'Marine', 'Shore', 'Student', 'Other'];
+// membershipGrades fetched from API in useEffect
+// categoryOptions fetched from API in useEffect
 
 export default function AddMemberPage() {
   const navigate = useNavigate();
   const [countries, setCountries] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [membershipGrades, setMembershipGrades] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -69,11 +71,25 @@ export default function AddMemberPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [cRes, gRes] = await Promise.all([getCountries(), getClubList()]);
+        const { default: api } = await import('../api/axiosInstance');
+        const [cRes, gRes, catRes, gradeRes] = await Promise.all([
+          getCountries(),
+          getClubList(),
+          api.post('/FindRotarian/GetCategoryList', {}),
+          api.post('/FindRotarian/GetMemberGradeList', {}),
+        ]);
         const countryData = cRes.data?.CountryLists || cRes.data?.CountryCategoryResult?.countries || cRes.data?.data || [];
         setCountries(countryData);
         const clubs = gRes.data?.TBGetClubResult?.ClubResult?.Table || [];
         setGroups(clubs.map(c => ({ Id: c.GroupId, GrpName: c.group_name })));
+        const cats = catRes.data?.str?.Table || [];
+        setCategoryOptions(cats.map(c => {
+          const n = c.name || c.CatName; return typeof n === 'object' ? n?.name || '' : n || '';
+        }).filter(Boolean));
+        const grades = gradeRes.data?.str?.Table || [];
+        setMembershipGrades(grades.map(g => {
+          const n = g.name; return typeof n === 'object' ? n?.name || '' : n || '';
+        }).filter(Boolean));
       } catch {}
     })();
   }, []);
@@ -91,25 +107,39 @@ export default function AddMemberPage() {
   const handleSubmit = async () => {
     if (!form.FirstName.trim()) { alert('Please Enter First Name'); return; }
     if (!form.LastName.trim()) { alert('Please Enter Last Name'); return; }
-    if (!form.MemberMobile.trim()) { alert('Please Enter Mobile Number'); return; }
+    if (!form.MemberMobile?.trim()) { alert('Please Enter Mobile Number'); return; }
     if (!form.MembershipId?.trim()) { alert('Please Enter Membership ID'); return; }
+    if (!form.ChapterBranchName?.trim()) { alert('Please Select Chapter/Branch Name'); return; }
     setSaving(true);
     setError('');
     try {
-      await createMember({
-        MemberName: [form.FirstName, form.MiddleName, form.LastName].filter(Boolean).join(' '),
-        MemberMobile: form.MemberMobile,
-        MemberEmail: form.MemberEmail,
-        CountryCode: form.MobileCountryCode,
-        Dob: form.BirthDate,
-        Doa: form.AnniversaryDate,
-        BloodGroup: form.BloodGroup,
-        SecondaryMobileNo: form.SecondaryMobileNo,
-        MembershipGrade: form.MembershipGrade,
-        Classification: form.Category,
-        CompanyName: form.CompanyName,
-        Designation: form.MembershipId,
+      const res = await createMember({
+        grpID: form.ChapterBranchName || '',
+        firstName: form.FirstName,
+        middleName: form.MiddleName,
+        lastName: form.LastName,
+        mobileNo: form.MemberMobile,
+        emailID: form.MemberEmail,
+        countryCode: form.MobileCountryCode || '91',
+        dob: form.BirthDate,
+        doa: form.AnniversaryDate,
+        bloodGrp: form.BloodGroup,
+        secondaryMobileNo: form.SecondaryMobileNo,
+        membershipId: form.MembershipId,
+        membershipGrade: form.MembershipGrade,
+        category: form.Category,
+        companyName: form.CompanyName,
+        address: form.Address,
+        city: form.City,
+        state: form.State,
+        pincode: form.PinZipCode,
+        country: form.ResCountry || form.MobileCountry?.split(' (')[0] || 'India',
       });
+      if (res.data?.status === '1') {
+        alert(res.data.message || 'Failed to add member');
+        return;
+      }
+      alert('Member added successfully');
       navigate('/members');
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Save failed');
@@ -294,13 +324,15 @@ export default function AddMemberPage() {
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>Membership Grade</label>
             <select value={form.MembershipGrade} onChange={(e) => setForm({ ...form, MembershipGrade: e.target.value })} style={{ ...inputStyle, backgroundColor: '#fff' }}>
-              {membershipGrades.map(g => <option key={g} value={g === '-Select-' ? '' : g}>{g}</option>)}
+              <option value="">-Select-</option>
+              {membershipGrades.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>Category</label>
             <select value={form.Category} onChange={(e) => setForm({ ...form, Category: e.target.value })} style={{ ...inputStyle, backgroundColor: '#fff' }}>
-              {categoryOptions.map(c => <option key={c} value={c === '-Select-' ? '' : c}>{c}</option>)}
+              <option value="">-Select-</option>
+              {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
         </div>
@@ -314,7 +346,7 @@ export default function AddMemberPage() {
             <label style={labelStyle}>Chapter/Branch Name</label>
             <select value={form.ChapterBranchName} onChange={(e) => setForm({ ...form, ChapterBranchName: e.target.value })} style={{ ...inputStyle, backgroundColor: '#fff' }}>
               <option value="">-Select-</option>
-              {groups.map(g => <option key={g.Id || g.id} value={g.GrpName || g.grpName}>{g.GrpName || g.grpName}</option>)}
+              {groups.map(g => <option key={g.Id || g.id} value={g.Id || g.id}>{g.GrpName || g.grpName}</option>)}
             </select>
           </div>
           <div style={{ flex: 1 }} />

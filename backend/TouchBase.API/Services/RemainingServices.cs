@@ -131,6 +131,23 @@ public class GroupService : IGroupService
         if (request.other != null) group.Other = request.other;
         group.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+
+        // Also sync the Clubs table so the list reflects the updated name
+        var club = await _db.Clubs.FirstOrDefaultAsync(c => c.GroupId == group.Id);
+        if (club == null)
+        {
+            club = new Club { GroupId = group.Id };
+            _db.Clubs.Add(club);
+        }
+        if (request.grpName != null) club.ClubName = request.grpName;
+        if (request.addrss1 != null) club.Address = request.addrss1;
+        if (request.city != null) club.City = request.city;
+        if (request.state != null) club.State = request.state;
+        if (request.country != null) club.Country = request.country;
+        if (request.other != null) club.MeetingDay = request.other;
+        if (request.website != null) club.Website = request.website;
+        await _db.SaveChangesAsync();
+
         return new CreateGroupResponse { status = "0", message = "success", grdId = group.Id.ToString() };
     }
 
@@ -324,13 +341,42 @@ public class GroupService : IGroupService
     public async Task<object> DeleteGroup(string groupId)
     {
         var gid = int.TryParse(groupId, out var g) ? g : 0;
+        var deleted = false;
+
+        // Soft delete from group_master (production table)
+        try
+        {
+            using var conn = new MySqlConnector.MySqlConnection("server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE group_master SET isdeleted=1 WHERE pk_group_master_id=@id";
+            cmd.Parameters.AddWithValue("@id", gid);
+            var rows = await cmd.ExecuteNonQueryAsync();
+            if (rows > 0) deleted = true;
+        }
+        catch { }
+
+        // Delete from Clubs table (listing table)
+        var club = await _db.Clubs.FirstOrDefaultAsync(c => c.GroupId == gid);
+        if (club != null)
+        {
+            _db.Clubs.Remove(club);
+            await _db.SaveChangesAsync();
+            deleted = true;
+        }
+
+        // Also try EF Groups table
         var group = await _db.Groups.FindAsync(gid);
-        if (group == null) return new { status = "1", message = "Group not found" };
-        var members = await _db.GroupMembers.Where(gm => gm.GroupId == gid).ToListAsync();
-        _db.GroupMembers.RemoveRange(members);
-        _db.Groups.Remove(group);
-        await _db.SaveChangesAsync();
-        return new { status = "0", message = "success" };
+        if (group != null)
+        {
+            group.IsActive = false;
+            await _db.SaveChangesAsync();
+            deleted = true;
+        }
+
+        return deleted
+            ? new { status = "0", message = "success" }
+            : new { status = "1", message = "Group not found" };
     }
 
     public async Task<object> DeleteSubGroup(string subGroupId)
@@ -398,8 +444,28 @@ public class AnnouncementService : IAnnouncementService
     {
         var grpId = int.TryParse(request.grpID, out var gid) ? gid : 0;
         var memId = int.TryParse(request.memID, out var mid) ? mid : 0;
-        var ann = new Announcement { GroupId = grpId, AnnounTitle = request.announTitle, AnnounDesc = request.announceDEsc, AnnounType = request.annType, AnnounImg = request.announImg, PublishDate = request.publishDate, ExpiryDate = request.expiryDate, SendSMSNonSmartPh = request.sendSMSNonSmartPh, SendSMSAll = request.sendSMSAll, ModuleId = request.moduleId, RegLink = request.reglink, InputIds = request.inputIDs, RepeatDates = request.AnnouncementRepeatDates, IsSubGrpAdmin = request.isSubGrpAdmin, CreatedBy = memId };
-        _db.Announcements.Add(ann); await _db.SaveChangesAsync();
+        var annId = int.TryParse(request.announID, out var aid) ? aid : 0;
+
+        Announcement ann;
+        if (annId > 0)
+        {
+            ann = await _db.Announcements.FindAsync(annId) ?? new Announcement { GroupId = grpId, CreatedBy = memId };
+            if (ann.Id == 0) _db.Announcements.Add(ann);
+        }
+        else
+        {
+            ann = new Announcement { GroupId = grpId, CreatedBy = memId };
+            _db.Announcements.Add(ann);
+        }
+
+        ann.AnnounTitle = request.announTitle; ann.AnnounDesc = request.announceDEsc;
+        ann.AnnounType = request.annType; ann.AnnounImg = request.announImg;
+        ann.PublishDate = request.publishDate; ann.ExpiryDate = request.expiryDate;
+        ann.SendSMSNonSmartPh = request.sendSMSNonSmartPh; ann.SendSMSAll = request.sendSMSAll;
+        ann.ModuleId = request.moduleId; ann.RegLink = request.reglink;
+        ann.InputIds = request.inputIDs; ann.RepeatDates = request.AnnouncementRepeatDates;
+        ann.IsSubGrpAdmin = request.isSubGrpAdmin;
+        await _db.SaveChangesAsync();
         return new { status = "0", message = "success" };
     }
 
@@ -669,98 +735,245 @@ public class AttendanceService : IAttendanceService
     public async Task<object> GetAttendanceListNew(AttendanceListRequest request)
     {
         var grpId = int.TryParse(request.GroupId, out var gid) ? gid : 0;
-        var records = await _db.AttendanceRecords.Where(a => a.GroupId == grpId)
+        try
+        {
+            var records = new List<object>();
+            using var conn = new MySqlConnector.MySqlConnection(ProdAttConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT attendance_id as AttendanceID, name as AttendanceName, AttendanceDate, '' as Attendancetime, COALESCE(MembersCount,0) as member_count, COALESCE(VisitorsCount,0) as visitor_count, COALESCE(AttendanceDesc,'') as Description FROM attentance_master WHERE fk_group_id=@grp AND (isdeleted=0 OR isdeleted IS NULL) ORDER BY attendance_id DESC";
+            cmd.Parameters.AddWithValue("@grp", grpId);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                records.Add(new { AttendanceID = reader["AttendanceID"], AttendanceName = reader["AttendanceName"]?.ToString(), AttendanceDate = reader["AttendanceDate"]?.ToString(), Attendancetime = reader["Attendancetime"]?.ToString(), member_count = reader["member_count"], visitor_count = reader["visitor_count"], Description = reader["Description"]?.ToString() });
+            }
+            if (records.Count > 0)
+                return new { TBAttendanceListResult = new { status = "0", message = "success", Result = new { Table = records } } };
+        }
+        catch { }
+
+        // Fallback to EF
+        var localRecords = await _db.AttendanceRecords.Where(a => a.GroupId == grpId)
             .OrderByDescending(a => a.Id)
             .Select(a => new { AttendanceID = a.Id, AttendanceName = a.AttendanceName, AttendanceDate = a.AttendanceDate, Attendancetime = a.AttendanceTime, member_count = a.MemberCount ?? 0, visitor_count = a.VisitorCount ?? 0, Description = a.AttendanceDesc }).ToListAsync();
-        return new { TBAttendanceListResult = new { status = "0", message = "success", Result = new { Table = records } } };
+        return new { TBAttendanceListResult = new { status = "0", message = "success", Result = new { Table = localRecords } } };
     }
 
     public async Task<AttendanceDetailResponse> GetAttendanceDetails(AttendanceDetailRequest request)
     {
         var id = int.TryParse(request.AttendanceID, out var aid) ? aid : 0;
-        var ar = await _db.AttendanceRecords.Include(a => a.AttendanceMembers).Include(a => a.AttendanceVisitors).FirstOrDefaultAsync(a => a.Id == id);
+        // Read from production DB first
+        try
+        {
+            using var conn = new MySqlConnector.MySqlConnection(ProdAttConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT attendance_id, name, AttendanceDate, AttendanceDesc, MembersCount, VisitorsCount FROM attentance_master WHERE attendance_id = @id AND (isdeleted=0 OR isdeleted IS NULL)";
+            cmd.Parameters.AddWithValue("@id", id);
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                return new AttendanceDetailResponse
+                {
+                    status = "0", message = "success",
+                    AttendanceDetailsResult = new List<AttendanceDetailDto> { new() {
+                        AttendanceID = reader["attendance_id"]?.ToString(),
+                        AttendanceName = reader["name"]?.ToString(),
+                        AttendanceDate = reader["AttendanceDate"]?.ToString(),
+                        AttendanceDesc = reader["AttendanceDesc"]?.ToString(),
+                        MemberCount = reader["MembersCount"] as int? ?? 0,
+                        VisitorsCount = reader["VisitorsCount"] as int? ?? 0,
+                    }}
+                };
+            }
+        }
+        catch { }
+
+        // Fallback to local DB
+        var ar = await _db.AttendanceRecords.FirstOrDefaultAsync(a => a.Id == id);
         if (ar == null) return new AttendanceDetailResponse { status = "1", message = "Not found" };
-        return new AttendanceDetailResponse { status = "0", message = "success", AttendanceDetailsResult = new List<AttendanceDetailDto> { new() { AttendanceID = ar.Id.ToString(), AttendanceName = ar.AttendanceName, AttendanceDate = ar.AttendanceDate, Attendancetime = ar.AttendanceTime, AttendanceDesc = ar.AttendanceDesc, MemberCount = ar.MemberCount ?? ar.AttendanceMembers.Count, VisitorsCount = ar.VisitorCount ?? ar.AttendanceVisitors.Count } } };
+        var memberCount = await _db.AttendanceMembers.CountAsync(m => m.AttendanceRecordId == id);
+        var visitorCount = await _db.AttendanceVisitors.CountAsync(v => v.AttendanceRecordId == id);
+        return new AttendanceDetailResponse { status = "0", message = "success", AttendanceDetailsResult = new List<AttendanceDetailDto> { new() { AttendanceID = ar.Id.ToString(), AttendanceName = ar.AttendanceName, AttendanceDate = ar.AttendanceDate, Attendancetime = ar.AttendanceTime, AttendanceDesc = ar.AttendanceDesc, MemberCount = memberCount, VisitorsCount = visitorCount } } };
     }
 
     public async Task<object> AttendanceDelete(AttendanceDeleteRequest request)
     {
         var id = int.TryParse(request.AttendanceID, out var aid) ? aid : 0;
-        var ar = await _db.AttendanceRecords.FindAsync(id);
-        if (ar != null) { _db.AttendanceRecords.Remove(ar); await _db.SaveChangesAsync(); }
-        return new { status = "0", message = "success" };
+        try
+        {
+            using var conn = new MySqlConnector.MySqlConnection(ProdAttConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE attentance_master SET isdeleted=1, deletion_date=NOW() WHERE attendance_id=@id";
+            cmd.Parameters.AddWithValue("@id", id);
+            await cmd.ExecuteNonQueryAsync();
+            return new { status = "0", message = "success" };
+        }
+        catch
+        {
+            var ar = await _db.AttendanceRecords.FindAsync(id);
+            if (ar != null) { _db.AttendanceRecords.Remove(ar); await _db.SaveChangesAsync(); }
+            return new { status = "0", message = "success" };
+        }
     }
 
     public async Task<object> AttendanceAddEdit(AttendanceAddEditRequest request)
     {
         var attId = int.TryParse(request.AttendanceID, out var aid) ? aid : 0;
         var grpId = int.TryParse(request.GroupId, out var gid) ? gid : 0;
+        var memberCount = request.Members?.Count ?? 0;
+        var visitorCount = request.Visitors?.Count(v => !string.IsNullOrEmpty(v.VisitorName)) ?? 0;
 
-        AttendanceRecord record;
-        if (attId > 0)
+        try
         {
-            record = await _db.AttendanceRecords.FindAsync(attId) ?? new AttendanceRecord();
-            if (record.Id == 0) { record.GroupId = grpId; _db.AttendanceRecords.Add(record); }
-        }
-        else
-        {
-            record = new AttendanceRecord { GroupId = grpId };
-            _db.AttendanceRecords.Add(record);
-        }
+            using var conn = new MySqlConnector.MySqlConnection(ProdAttConnStr);
+            await conn.OpenAsync();
 
-        record.AttendanceName = request.AttendanceName;
-        record.AttendanceDesc = request.AttendanceDesc;
-        record.AttendanceDate = request.AttendanceDate;
-        record.UpdatedAt = DateTime.UtcNow;
-
-        await _db.SaveChangesAsync();
-
-        // Update members
-        if (request.Members != null)
-        {
-            var existing = await _db.AttendanceMembers.Where(am => am.AttendanceRecordId == record.Id).ToListAsync();
-            _db.AttendanceMembers.RemoveRange(existing);
-            foreach (var m in request.Members)
+            // Insert or update attentance_master
+            if (attId > 0)
             {
-                var mpId = int.TryParse(m.MemberProfileId ?? m.Id, out var mp) ? mp : 0;
-                if (mpId > 0)
-                    _db.AttendanceMembers.Add(new AttendanceMember { AttendanceRecordId = record.Id, MemberProfileId = mpId, Type = m.Type ?? "Member" });
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE attentance_master SET name=@name, AttendanceDesc=@desc, AttendanceDate=@date, MembersCount=@mc, VisitorsCount=@vc, modification_date=NOW() WHERE attendance_id=@id";
+                cmd.Parameters.AddWithValue("@id", attId);
+                cmd.Parameters.AddWithValue("@name", request.AttendanceName ?? "");
+                cmd.Parameters.AddWithValue("@desc", request.AttendanceDesc ?? "");
+                cmd.Parameters.AddWithValue("@date", string.IsNullOrEmpty(request.AttendanceDate) ? DBNull.Value : (object)DateTime.Parse(request.AttendanceDate));
+                cmd.Parameters.AddWithValue("@mc", memberCount);
+                cmd.Parameters.AddWithValue("@vc", visitorCount);
+                await cmd.ExecuteNonQueryAsync();
             }
-            record.MemberCount = request.Members.Count;
-        }
-
-        // Update visitors
-        if (request.Visitors != null)
-        {
-            var existing = await _db.AttendanceVisitors.Where(av => av.AttendanceRecordId == record.Id).ToListAsync();
-            _db.AttendanceVisitors.RemoveRange(existing);
-            foreach (var v in request.Visitors)
+            else
             {
-                if (!string.IsNullOrEmpty(v.VisitorName))
-                    _db.AttendanceVisitors.Add(new AttendanceVisitor { AttendanceRecordId = record.Id, VisitorName = v.VisitorName, Type = v.Type ?? "Visitor" });
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "INSERT INTO attentance_master (fk_group_id, name, AttendanceDesc, AttendanceDate, MembersCount, VisitorsCount, creation_date, isdeleted) VALUES (@grp, @name, @desc, @date, @mc, @vc, NOW(), 0)";
+                cmd.Parameters.AddWithValue("@grp", grpId);
+                cmd.Parameters.AddWithValue("@name", request.AttendanceName ?? "");
+                cmd.Parameters.AddWithValue("@desc", request.AttendanceDesc ?? "");
+                cmd.Parameters.AddWithValue("@date", string.IsNullOrEmpty(request.AttendanceDate) ? DBNull.Value : (object)DateTime.Parse(request.AttendanceDate));
+                cmd.Parameters.AddWithValue("@mc", memberCount);
+                cmd.Parameters.AddWithValue("@vc", visitorCount);
+                await cmd.ExecuteNonQueryAsync();
+                using var idCmd = conn.CreateCommand();
+                idCmd.CommandText = "SELECT LAST_INSERT_ID()";
+                attId = Convert.ToInt32(await idCmd.ExecuteScalarAsync());
             }
-            record.VisitorCount = request.Visitors.Count;
-        }
 
-        await _db.SaveChangesAsync();
-        return new { status = "0", message = "success" };
+            // Update members
+            if (request.Members != null)
+            {
+                using var delCmd = conn.CreateCommand();
+                delCmd.CommandText = "UPDATE tbl_attendancememberdetails SET Isdeleted=1, deleted_date=NOW() WHERE FK_AttendanceID=@aid AND (Isdeleted=0 OR Isdeleted IS NULL)";
+                delCmd.Parameters.AddWithValue("@aid", attId);
+                await delCmd.ExecuteNonQueryAsync();
+                foreach (var m in request.Members)
+                {
+                    var mpId = int.TryParse(m.MemberProfileId ?? m.Id, out var mp) ? mp : 0;
+                    if (mpId > 0)
+                    {
+                        using var insCmd = conn.CreateCommand();
+                        insCmd.CommandText = "INSERT INTO tbl_attendancememberdetails (FK_AttendanceID, FK_MemberID) VALUES (@aid, @mid)";
+                        insCmd.Parameters.AddWithValue("@aid", attId);
+                        insCmd.Parameters.AddWithValue("@mid", mpId);
+                        await insCmd.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+
+            // Update visitors
+            if (request.Visitors != null)
+            {
+                using var delCmd = conn.CreateCommand();
+                delCmd.CommandText = "UPDATE tbl_attendancevisitorsdetails SET isdeleted=1, deleted_date=NOW() WHERE FK_AttendanceID=@aid AND (isdeleted=0 OR isdeleted IS NULL)";
+                delCmd.Parameters.AddWithValue("@aid", attId);
+                await delCmd.ExecuteNonQueryAsync();
+                foreach (var v in request.Visitors)
+                {
+                    if (!string.IsNullOrEmpty(v.VisitorName))
+                    {
+                        using var insCmd = conn.CreateCommand();
+                        insCmd.CommandText = "INSERT INTO tbl_attendancevisitorsdetails (FK_AttendanceID, VisitorsName, Rotarian_whohas_Brought, created_date) VALUES (@aid, @name, @inv, NOW())";
+                        insCmd.Parameters.AddWithValue("@aid", attId);
+                        insCmd.Parameters.AddWithValue("@name", v.VisitorName);
+                        insCmd.Parameters.AddWithValue("@inv", v.InvitedBy ?? "");
+                        await insCmd.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+
+            return new { status = "0", message = "success" };
+        }
+        catch (Exception ex) { return new { status = "1", message = ex.Message }; }
     }
 
     public async Task<object> GetAttendanceMemberDetails(AttendanceMemberDetailRequest request)
     {
         var aid = int.TryParse(request.AttendanceID, out var id) ? id : 0;
-        var members = await _db.AttendanceMembers.Where(am => am.AttendanceRecordId == aid)
+        // Read from production-style tables in imei_new
+        try
+        {
+            var members = new List<object>();
+            using var conn = new MySqlConnector.MySqlConnection(ProdAttConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT a.FK_MemberID, TRIM(CONCAT(COALESCE(m.Member_name,''),' ',COALESCE(m.last_name,''))) as MemberName,
+                COALESCE(m.member_profile_photo_path,'') as image
+                FROM tbl_attendancememberdetails a
+                LEFT JOIN member_master_profile m ON a.FK_MemberID = m.pk_member_master_profile_id
+                WHERE a.FK_AttendanceID = @aid AND (a.isdeleted=0 OR a.isdeleted IS NULL)";
+            cmd.Parameters.AddWithValue("@aid", aid);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                members.Add(new { FK_MemberID = reader["FK_MemberID"], MemberName = reader["MemberName"]?.ToString()?.Trim(), Designation = "", image = reader["image"]?.ToString() });
+            }
+            if (members.Count > 0)
+                return new { TBAttendanceMemberDetailsResult = new { status = "0", message = "success", AttendanceMemberResult = members } };
+        }
+        catch { }
+
+        // Fallback to EF
+        var localMembers = await _db.AttendanceMembers.Where(am => am.AttendanceRecordId == aid)
             .Join(_db.MemberProfiles, am => am.MemberProfileId, mp => mp.Id, (am, mp) => new { FK_MemberID = mp.Id, MemberName = mp.MemberName, Designation = mp.Designation ?? "", image = mp.ProfilePic })
             .ToListAsync();
-        return new { TBAttendanceMemberDetailsResult = new { status = "0", message = "success", AttendanceMemberResult = members } };
+        return new { TBAttendanceMemberDetailsResult = new { status = "0", message = "success", AttendanceMemberResult = localMembers } };
     }
+
+    private const string ProdAttConnStr = "server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True;Allow User Variables=true";
 
     public async Task<object> GetAttendanceVisitorsDetails(AttendanceMemberDetailRequest request)
     {
         var aid = int.TryParse(request.AttendanceID, out var id) ? id : 0;
-        var visitors = await _db.AttendanceVisitors.Where(av => av.AttendanceRecordId == aid)
+        // Read from production DB (tbl_attendancevisitorsdetails) - same as production web app
+        var visitors = new List<object>();
+        try
+        {
+            using var conn = new MySqlConnector.MySqlConnection(ProdAttConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT PK_AttendanceVisitorID, FK_AttendanceID, VisitorsName, COALESCE(Rotarian_whohas_Brought,'') as Rotarian_whohas_Brought FROM tbl_attendancevisitorsdetails WHERE FK_AttendanceID = @aid AND (isdeleted=0 OR isdeleted IS NULL)";
+            cmd.Parameters.AddWithValue("@aid", aid);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                visitors.Add(new
+                {
+                    PK_AttendanceVisitorID = reader["PK_AttendanceVisitorID"]?.ToString(),
+                    FK_AttendanceID = reader["FK_AttendanceID"]?.ToString(),
+                    VisitorsName = reader["VisitorsName"]?.ToString(),
+                    Member_whohas_Brought = reader["Rotarian_whohas_Brought"]?.ToString() ?? ""
+                });
+            }
+            if (visitors.Count > 0)
+                return new { TBAttendanceVisitorsDetailsResult = new { status = "0", message = "success", AttendanceVisitorsResult = visitors } };
+        }
+        catch { }
+
+        // Fallback to local DB
+        var localVisitors = await _db.AttendanceVisitors.Where(av => av.AttendanceRecordId == aid)
             .Select(av => new { PK_AttendanceVisitorID = av.Id.ToString(), FK_AttendanceID = av.AttendanceRecordId.ToString(), VisitorsName = av.VisitorName, Member_whohas_Brought = "" }).ToListAsync();
-        return new { TBAttendanceVisitorsDetailsResult = new { status = "0", message = "success", AttendanceVisitorsResult = visitors } };
+        return new { TBAttendanceVisitorsDetailsResult = new { status = "0", message = "success", AttendanceVisitorsResult = localVisitors } };
     }
 }
 
@@ -1043,7 +1256,22 @@ public class FindRotarianService : IFindRotarianService
         if (mp == null) return new { TBRotarianDetailsResult = new { status = "1", message = "Not found" } };
         var grp = await _db.GroupMembers.Include(gm => gm.Group).FirstOrDefaultAsync(gm => gm.MemberProfileId == mp.Id && gm.GroupId != 31185);
         var addr = await _db.AddressDetails.FirstOrDefaultAsync(a => a.MemberProfileId == mp.Id);
-        return new { TBRotarianDetailsResult = new { status = "0", message = "success", RotarianDetailsResult = new { masterUID = mp.UserId.ToString(), profileID = mp.Id.ToString(), memberName = mp.MemberName, memberMobile = mp.MemberMobile, designation = mp.Designation, clubName = grp?.Group?.GrpName, pic = mp.ProfilePic, Email = mp.MemberEmail, CompanyName = mp.CompanyName, SecondaryMobile = mp.SecondaryMobileNo, blood_Group = mp.BloodGroup, member_date_of_birth = mp.Dob, member_date_of_wedding = mp.Doa, Keywords = mp.Keywords, Club_Name = grp?.Group?.GrpName } } };
+        return new { TBRotarianDetailsResult = new { status = "0", message = "success", RotarianDetailsResult = new {
+            masterUID = mp.UserId.ToString(), profileID = mp.Id.ToString(),
+            memberName = mp.MemberName, memberMobile = mp.MemberMobile,
+            Whatsapp_num = mp.MemberMobile, Secondry_num = mp.SecondaryMobileNo,
+            memberEmail = mp.MemberEmail, Email = mp.MemberEmail,
+            designation = mp.Designation, clubName = grp?.Group?.GrpName,
+            Chaptr_Brnch_Name = grp?.Group?.GrpName, Club_Name = grp?.Group?.GrpName,
+            pic = mp.ProfilePic, member_profile_photo_path = mp.ProfilePic,
+            Company_name = mp.CompanyName, blood_Group = mp.BloodGroup,
+            IMEI_Membership_Id = mp.ImeiMembershipId, Membership_Grade = mp.MembershipGrade,
+            CategoryName = mp.Category, mem_Category = mp.Category,
+            DOB = mp.Dob, DOA = mp.Doa,
+            member_date_of_birth = mp.Dob, member_date_of_wedding = mp.Doa,
+            Keywords = mp.Keywords, country = addr?.Country ?? mp.MemberCountry,
+            Address = addr?.Address, City = addr?.City, State = addr?.State, pincode = addr?.Pincode
+        } } };
     }
     public async Task<object> GetCategoryList()
     {

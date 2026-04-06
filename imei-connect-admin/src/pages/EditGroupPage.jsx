@@ -6,6 +6,16 @@ import { getCountries } from '../api/utilityService';
 
 const meetingDays = ['-Select-', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+const timeOptions = (() => {
+  const opts = ['-Select-'];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 10) {
+      opts.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
+  }
+  return opts;
+})();
+
 const inputStyle = {
   width: '100%', height: '34px', border: '1px solid #ccc',
   borderRadius: '2px', padding: '4px 10px', fontSize: '13px', outline: 'none',
@@ -45,15 +55,17 @@ export default function EditGroupPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { getClubDetails } = await import('../api/groupService');
-        const [clubRes, cRes, detailRes] = await Promise.all([
+        const { getClubDetails, getGroup } = await import('../api/groupService');
+        const [clubRes, cRes, detailRes, groupRes] = await Promise.all([
           getClubList(),
           getCountries(),
           getClubDetails(id).catch(() => ({ data: {} })),
+          getGroup(id, '0').catch(() => ({ data: {} })),
         ]);
         const clubs = clubRes.data?.TBGetClubResult?.ClubResult?.Table || [];
         const g = clubs.find(c => String(c.GroupId) === String(id));
         const detail = detailRes.data?.ClubDetailResult || {};
+        const grpDetail = groupRes.data?.getGroupDetailResult?.[0] || {};
         const countryData = cRes.data?.CountryLists || cRes.data?.CountryCategoryResult?.countries || cRes.data?.data || [];
         setCountries(countryData);
 
@@ -65,23 +77,23 @@ export default function EditGroupPage() {
           entity = entityRes.data || {};
         } catch {}
 
-        const name = g?.group_name || detail.clubName || entity.groupName || '';
+        const name = g?.group_name || detail.clubName || grpDetail.grpName || entity.groupName || '';
         setGroupName(name);
 
         setForm({
           GrpName: name,
-          GrpCategory: entity.contactNo || '',
+          GrpCategory: grpDetail.grpCategory || entity.contactNo || '',
           GrpImg: null,
           DistrictId: '',
           MeetingDay: detail.meetingDay || g?.Meeting_Day || '',
           FromTime: detail.meetingTime || g?.meeting_from_time || '',
           ToTime: '',
-          Address1: detail.address || entity.address || '',
-          Country: detail.country || 'India',
-          City: detail.city || '',
-          State: detail.state || '',
-          Pincode: '',
-          Email: entity.email || detail.presidentEmail || '',
+          Address1: grpDetail.addrss1 || detail.address || entity.address || '',
+          Country: grpDetail.country || detail.country || 'India',
+          City: grpDetail.city || detail.city || '',
+          State: grpDetail.state || detail.state || '',
+          Pincode: grpDetail.pincode || '',
+          Email: grpDetail.emailid || entity.email || detail.presidentEmail || '',
         });
 
         // Set logo preview if available
@@ -240,26 +252,23 @@ export default function EditGroupPage() {
           </div>
           <div style={{ flex: '1 1 25%' }}>
             <label style={labelStyle}>From Time</label>
-            <input
-              type="text"
+            <select
               value={form.FromTime}
               onChange={(e) => setForm({ ...form, FromTime: e.target.value })}
-              placeholder=""
-              style={inputStyle}
-            />
+              style={{ ...inputStyle, backgroundColor: '#fff' }}
+            >
+              {timeOptions.map(t => <option key={t} value={t === '-Select-' ? '' : t}>{t}</option>)}
+            </select>
           </div>
-        </div>
-
-        {/* Row 3: To Time */}
-        <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
-          <div style={{ flex: '0 0 25%' }}>
+          <div style={{ flex: '1 1 25%' }}>
             <label style={labelStyle}>To Time</label>
-            <input
-              type="text"
+            <select
               value={form.ToTime}
               onChange={(e) => setForm({ ...form, ToTime: e.target.value })}
-              style={inputStyle}
-            />
+              style={{ ...inputStyle, backgroundColor: '#fff' }}
+            >
+              {timeOptions.map(t => <option key={t} value={t === '-Select-' ? '' : t}>{t}</option>)}
+            </select>
           </div>
         </div>
 

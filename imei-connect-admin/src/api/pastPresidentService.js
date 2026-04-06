@@ -6,8 +6,8 @@ export const getPastPresidents = (GroupId, SearchText = '', updateOn = '1970/01/
 export const createPastPresident = (data) =>
   api.post('/PastPresidents/AddPastPresident', data);
 
-export const updatePastPresident = (data) =>
-  api.post('/PastPresidents/UpdatePastPresident', data);
+export const updatePastPresident = (id, data) =>
+  api.post('/PastPresidents/UpdatePastPresident', { ...data, PastPresidentId: String(id) });
 
 export const deletePastPresident = (PastPresidentId) =>
   api.post('/PastPresidents/DeletePastPresident', { PastPresidentId });

@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 const menuItems = [
@@ -90,6 +90,12 @@ const menuItems = [
 
 export default function Sidebar({ isOpen, onClose }) {
   const { user } = useAuth();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const hasGroupId = searchParams.has('groupId');
+  // Also check if we're on a chapter detail page like /groups/123
+  const isChapterRoute = location.pathname.match(/^\/groups\/\d+/);
+  const inChapterContext = hasGroupId || isChapterRoute;
 
   return (
     <>
@@ -110,30 +116,33 @@ export default function Sidebar({ isOpen, onClose }) {
 
         {/* Navigation Menu */}
         <nav className="mt-1 px-2 pb-4 overflow-y-auto h-[calc(100%-72px)]">
-          {menuItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-3.5 text-sm transition-colors mb-0.5 ${
-                  isActive
-                    ? ''
-                    : 'hover:bg-gray-50'
-                }`
-              }
-              style={({ isActive }) => ({
-                backgroundColor: isActive ? '#eee' : 'transparent',
-                color: isActive ? '#1a297d' : '#333',
-                fontWeight: 'bold',
-                borderBottom: '1px solid #e7e7e7',
-                borderRadius: '0',
-              })}
-            >
-              <span className="flex-shrink-0">{item.icon}</span>
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
+          {menuItems.map((item) => {
+            // When in chapter context (groupId in URL), only highlight "Branch & Chapter"
+            const isActive = inChapterContext
+              ? item.path === '/groups'
+              : location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                onClick={onClose}
+                className={`flex items-center gap-3 px-3 py-3.5 text-sm transition-colors mb-0.5 ${
+                  isActive ? '' : 'hover:bg-gray-50'
+                }`}
+                style={{
+                  backgroundColor: isActive ? '#eee' : 'transparent',
+                  color: isActive ? '#1a297d' : '#333',
+                  fontWeight: 'bold',
+                  borderBottom: '1px solid #e7e7e7',
+                  borderRadius: '0',
+                }}
+              >
+                <span className="flex-shrink-0">{item.icon}</span>
+                <span>{item.label}</span>
+              </NavLink>
+            );
+          })}
         </nav>
       </aside>
     </>

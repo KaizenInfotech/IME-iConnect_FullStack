@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
-import { getGoverningCouncil } from '../api/memberService';
+import { getGoverningCouncil, deleteBOD, updateBOD } from '../api/memberService';
 
-const designationOptions = ['-Select-', 'President', 'Vice President', 'Secretary', 'Treasurer', 'Member', 'Chairman', 'Director'];
+const designationOptions = ['-Select-', 'President', 'Vice President', 'Hon. General Secretary', 'Chairman', 'Others'];
 
 const inputStyle = {
   width: '100%', height: '34px', border: '1px solid #ccc',
@@ -22,6 +22,7 @@ export default function GoverningCouncilPage() {
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [error, setError] = useState('');
+  const [editing, setEditing] = useState(null);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -32,6 +33,7 @@ export default function GoverningCouncilPage() {
     ChapterBranch: '',
     Name: '',
     Designation: '',
+    OtherDesignation: '',
     Email: '',
     PhoneNo: '',
   });
@@ -46,13 +48,20 @@ export default function GoverningCouncilPage() {
       const res = await getGoverningCouncil();
       const members = res.data?.Result?.Table || [];
       const data = members.map(m => ({
-        Id: m.ProfileID,
+        Id: m.ProfileID || m.BOD_pkID,
+        BOD_PkID: m.BOD_pkID,
+        YearFilter: m.YearFilter,
         MemberName: m.MemberName,
         Designation: m.MemberDesignation,
         Email: m.Email,
         PhoneNo: m.PhoneNo,
+        MemberMobile: m.membermobile || m.PhoneNo,
+        MemberEmail: m.Email,
         ProfilePic: m.pic,
         GroupId: m.grpID,
+        ProfileID: m.ProfileID,
+        chapterId: m.chapterId,
+        chapterName: m.chapterName,
       }));
       setItems(data);
     } catch {}
@@ -60,7 +69,8 @@ export default function GoverningCouncilPage() {
   };
 
   const openAdd = async () => {
-    setForm({ ChapterBranch: '', Name: '', Designation: '', Email: '', PhoneNo: '' });
+    setEditing(null);
+    setForm({ ChapterBranch: '', Name: '', Designation: '', OtherDesignation: '', Email: '', PhoneNo: '' });
     setShowModal(true);
     try {
       const { getClubList } = await import('../api/groupService');
@@ -70,8 +80,23 @@ export default function GoverningCouncilPage() {
     } catch {}
   };
 
-  const handleChapterChange = (e) => {
-    setForm({ ...form, ChapterBranch: e.target.value, Name: '' });
+  const handleChapterChange = async (e) => {
+    const grpId = e.target.value;
+    setForm({ ...form, ChapterBranch: grpId, Name: '', Email: '', PhoneNo: '' });
+    setMembersList([]);
+    if (grpId) {
+      try {
+        const { getMembers } = await import('../api/memberService');
+        const res = await getMembers(grpId);
+        const members = res.data?.MemberDetail?.NewMemberList || [];
+        setMembersList(members.map(m => ({
+          Id: m.profileID || m.masterID,
+          MemberName: [m.memberName, m.middleName, m.lastName].filter(Boolean).join(' ').trim(),
+          MemberEmail: m.memberEmail,
+          MemberMobile: m.memberMobile,
+        })));
+      } catch {}
+    }
   };
 
   const handleNameChange = (e) => {
@@ -88,30 +113,99 @@ export default function GoverningCouncilPage() {
   const handleSave = async () => {
     if (!form.ChapterBranch) { alert('Please Select Chapter & Branch'); return; }
     if (!form.Name) { alert('Please Select Name'); return; }
-    if (!form.Designation) { alert('Please Select Designation'); return; }
+    if (!form.Designation || form.Designation === '-Select-') { alert('Please Select Designation'); return; }
+    if (form.Designation === 'Others' && !form.OtherDesignation.trim()) { alert('Please Enter Designation'); return; }
     setSaving(true);
     try {
-      // GAP: No dedicated governing council create endpoint
-      // Would call a specific API in production
-      alert('Governing Council member saved successfully');
+      let res;
+      if (editing) {
+        res = await updateBOD({
+          BOD_PkID: editing.BOD_PkID,
+          memberProfileID: editing.ProfileID,
+          groupId: '31185',
+          designation: form.Designation === 'Others' ? '0' : form.Designation,
+          otherDesignation: form.Designation === 'Others' ? form.OtherDesignation : '',
+          name: form.Name,
+          emailID: form.Email,
+          phoneNo: form.PhoneNo,
+          yearFilter: editing.YearFilter || '',
+          chapterId: editing.chapterId || '0',
+        });
+      } else {
+        const selectedMember = membersList.find(m => m.MemberName === form.Name);
+        const profileId = selectedMember?.Id || '';
+        res = await updateBOD({
+          BOD_PkID: '0',
+          memberProfileID: String(profileId),
+          groupId: '31185',
+          designation: form.Designation === 'Others' ? '0' : form.Designation,
+          otherDesignation: form.Designation === 'Others' ? form.OtherDesignation : '',
+          name: form.Name,
+          emailID: form.Email,
+          phoneNo: form.PhoneNo,
+          yearFilter: `${new Date().getFullYear()}-${new Date().getFullYear()}`,
+          chapterId: form.ChapterBranch || '0',
+        });
+      }
+      if (res.data?.status === '1') { alert(res.data.message); setSaving(false); return; }
+      alert(editing ? 'Governing Council Updated Successfully' : 'Governing Council member added successfully');
       setShowModal(false);
+      setEditing(null);
       fetchData();
     } catch (err) {
       setError(err.message || 'Save failed');
     } finally { setSaving(false); }
   };
 
-  const handleExportExcel = () => {
-    alert('Export to Excel feature will be available soon.');
+  const openEdit = (item) => {
+    setEditing(item);
+    const standardDesigs = ['President', 'Vice President', 'Hon. General Secretary', 'Chairman'];
+    const isStandard = standardDesigs.includes(item.Designation);
+
+    setForm({
+      ChapterBranch: item.chapterName || '',
+      Name: item.MemberName || '',
+      Designation: isStandard ? item.Designation : 'Others',
+      OtherDesignation: isStandard ? '' : (item.Designation || ''),
+      Email: item.MemberEmail || item.Email || '',
+      PhoneNo: item.MemberMobile || item.PhoneNo || '',
+    });
+    setShowModal(true);
   };
 
-  // Get member names filtered by selected chapter
-  const filteredMembers = form.ChapterBranch
-    ? membersList.filter(m => {
-        const gName = m.GroupName || m.groupName || m.ChapterName || m.chapterName || '';
-        return gName === form.ChapterBranch;
-      })
-    : membersList;
+  const handleDelete = async () => {
+    try {
+      const res = await deleteBOD(deleteTarget.BOD_PkID, deleteTarget.YearFilter || '');
+      if (res.data?.status === '0') {
+        alert('Member Deleted Successfully');
+      } else {
+        alert(res.data?.message || 'Delete failed');
+      }
+      setDeleteTarget(null);
+      fetchData();
+    } catch { setError('Delete failed'); }
+  };
+
+  const handleExportExcel = () => {
+    if (items.length === 0) { alert('No records found for download.'); return; }
+    const headers = ['Name', 'Designation', 'Mobile', 'Email'];
+    const csv = [
+      headers.join(','),
+      ...items.map(m => [
+        `"${m.MemberName || ''}"`,
+        `"${m.Designation || ''}"`,
+        `"${m.MemberMobile || m.PhoneNo || ''}"`,
+        `"${m.MemberEmail || m.Email || ''}"`,
+      ].join(','))
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'GoverningCouncilMembers.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const filteredMembers = membersList;
 
   if (loading) return <LoadingSpinner className="h-screen" />;
 
@@ -168,7 +262,7 @@ export default function GoverningCouncilPage() {
                   <td style={{ padding: '10px 12px' }}>{m.MemberMobile || m.memberMobile || ''}</td>
                   <td style={{ padding: '10px 12px' }}>{m.MemberEmail || m.memberEmail || ''}</td>
                   <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                    <button title="Edit" style={{ width: '26px', height: '26px', borderRadius: '50%', backgroundColor: '#0ead9a', color: '#fff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <button onClick={() => openEdit(m)} title="Edit" style={{ width: '26px', height: '26px', borderRadius: '50%', backgroundColor: '#0ead9a', color: '#fff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                       <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                     </button>
                   </td>
@@ -199,41 +293,57 @@ export default function GoverningCouncilPage() {
               {/* Chapter & Branch */}
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>Chapter & Branch :</label>
-                <select value={form.ChapterBranch} onChange={handleChapterChange} style={{ ...inputStyle, backgroundColor: '#fff' }}>
-                  <option value="">-Select-</option>
-                  {groups.map(g => <option key={g.Id || g.id} value={g.GrpName || g.grpName}>{g.GrpName || g.grpName}</option>)}
-                </select>
+                {editing ? (
+                  <input type="text" value={form.ChapterBranch} disabled style={{ ...inputStyle, backgroundColor: '#eee' }} />
+                ) : (
+                  <select value={form.ChapterBranch} onChange={handleChapterChange} style={{ ...inputStyle, backgroundColor: '#fff' }}>
+                    <option value="">-Select-</option>
+                    {groups.map(g => <option key={g.Id} value={g.Id}>{g.GrpName}</option>)}
+                  </select>
+                )}
               </div>
 
               {/* Name + Designation */}
               <div style={{ display: 'flex', gap: '15px', marginBottom: '12px' }}>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Name :</label>
-                  <select value={form.Name} onChange={handleNameChange} style={{ ...inputStyle, backgroundColor: '#fff' }}>
-                    <option value="">-Select-</option>
-                    {filteredMembers.map((m, i) => {
-                      const name = m.MemberName || m.memberName || '';
-                      return <option key={m.Id || m.id || i} value={name}>{name}</option>;
-                    })}
-                  </select>
+                  {editing ? (
+                    <input type="text" value={form.Name} disabled style={{ ...inputStyle, backgroundColor: '#eee' }} />
+                  ) : (
+                    <select value={form.Name} onChange={handleNameChange} style={{ ...inputStyle, backgroundColor: '#fff' }}>
+                      <option value="">-Select-</option>
+                      {filteredMembers.map((m, i) => {
+                        const name = m.MemberName || m.memberName || '';
+                        return <option key={m.Id || m.id || i} value={name}>{name}</option>;
+                      })}
+                    </select>
+                  )}
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Designation</label>
-                  <select value={form.Designation} onChange={(e) => setForm({ ...form, Designation: e.target.value })} style={{ ...inputStyle, backgroundColor: '#fff' }}>
+                  <select value={form.Designation} onChange={(e) => setForm({ ...form, Designation: e.target.value, OtherDesignation: '' })} style={{ ...inputStyle, backgroundColor: '#fff' }}>
                     {designationOptions.map(d => <option key={d} value={d === '-Select-' ? '' : d}>{d}</option>)}
                   </select>
                 </div>
               </div>
 
+              {/* Other Designation - shown only when "Others" is selected */}
+              {form.Designation === 'Others' && (
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Other :</label>
+                  <input type="text" value={form.OtherDesignation} onChange={(e) => setForm({ ...form, OtherDesignation: e.target.value })} placeholder="Enter Designation" style={inputStyle} />
+                </div>
+              )}
+
               {/* Email + Phone no */}
               <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Email :</label>
-                  <input type="email" value={form.Email} onChange={(e) => setForm({ ...form, Email: e.target.value })} style={inputStyle} />
+                  <input type="email" value={form.Email} disabled style={{ ...inputStyle, backgroundColor: '#eee' }} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Phone no :</label>
-                  <input type="tel" value={form.PhoneNo} onChange={(e) => setForm({ ...form, PhoneNo: e.target.value })} style={inputStyle} />
+                  <input type="tel" value={form.PhoneNo} disabled style={{ ...inputStyle, backgroundColor: '#eee' }} />
                 </div>
               </div>
 
@@ -250,7 +360,7 @@ export default function GoverningCouncilPage() {
                   }}
                 >
                   <svg width="12" height="12" fill="currentColor" viewBox="0 0 20 20"><path d="M3 3h11.586l2.707 2.707A1 1 0 0117.586 6H18v11a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2zm2 10v4h10v-4H5zm0-6v4h7V7H5z" /></svg>
-                  Save
+                  {editing ? 'Update' : 'Save'}
                 </button>
               </div>
             </div>
@@ -258,7 +368,7 @@ export default function GoverningCouncilPage() {
         </div>
       )}
 
-      <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => setDeleteTarget(null)} title="Delete" message={`Are you sure you want to delete "${deleteTarget?.MemberName || deleteTarget?.memberName}"?`} />
+      <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="Delete" message={`Are you sure you want to delete "${deleteTarget?.MemberName}"?`} />
     </div>
   );
 }

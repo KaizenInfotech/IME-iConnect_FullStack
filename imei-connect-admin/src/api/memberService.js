@@ -36,7 +36,19 @@ export const getDirectoryList = (grpID, page = '1', searchText = '') =>
   api.post('/Member/GetDirectoryList', { grpID, page, searchText });
 
 export const createMember = (data) =>
-  api.post('/Login/Registration', data);
+  api.post('/Member/AddMember', data);
 
 export const deleteMember = (id) =>
   api.post('/Member/DeleteMember', { memberProfileId: id });
+
+export const getBODDetails = (BOD_PkID, YearFilter = '') =>
+  api.post('/Member/GetBODDetails', { BOD_PkID, YearFilter });
+
+export const deleteBOD = (BOD_PkID, YearFilter = '') =>
+  api.post('/Member/DeleteBOD', { BOD_PkID, YearFilter });
+
+export const updateBOD = (data) =>
+  api.post('/Member/UpdateBOD', data);
+
+export const reorderBOD = (items) =>
+  api.post('/Member/ReorderBOD', items);

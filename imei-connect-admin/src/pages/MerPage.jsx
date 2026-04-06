@@ -5,9 +5,9 @@ import ConfirmDialog from '../components/shared/ConfirmDialog';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import { getMerItems, getMerYears, createMerItem, updateMerItem, deleteMerItem } from '../api/merService';
 
-const FILTER_OPTIONS = ['All', 'Published', 'Unpublished', 'Expired'];
+const FILTER_OPTIONS = ['All', 'Published', 'Unpublished'];
 const currentYear = new Date().getFullYear();
-const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
+const years = Array.from({ length: currentYear - 2022 + 1 }, (_, i) => currentYear - i);
 
 const emptyForm = {
   Title: '', Link: '', FilePath: '', PublishDate: '', ExpiryDate: '', FinanceYear: '', TransType: '1',
@@ -156,18 +156,6 @@ export default function MerPage() {
               padding: '4px 10px', fontSize: '13px', outline: 'none', width: '150px',
             }}
           />
-          {/* Search icon button */}
-          <button
-            style={{
-              width: '32px', height: '32px', borderRadius: '50%',
-              backgroundColor: '#2196F3', color: '#fff', border: 'none',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-            </svg>
-          </button>
           {/* Filter */}
           <select
             value={filter}
@@ -265,7 +253,7 @@ export default function MerPage() {
                         title="Edit"
                         style={{
                           width: '28px', height: '28px', borderRadius: '4px',
-                          backgroundColor: '#2196F3', color: '#fff',
+                          backgroundColor: '#0ead9a', color: '#fff',
                           border: 'none', cursor: 'pointer',
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         }}

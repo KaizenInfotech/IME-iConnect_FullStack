@@ -29,7 +29,9 @@ class _FindMemberScreenState extends State<FindMemberScreen> {
   void initState() {
     super.initState();
     _nameController.addListener(() => setState(() {}));
-    context.read<FindRotarianProvider>().fetchFindMemberDropdowns();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<FindRotarianProvider>().fetchFindMemberDropdowns();
+    });
   }
 
   @override

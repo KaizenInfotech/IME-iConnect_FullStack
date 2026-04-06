@@ -69,12 +69,13 @@ export default function UpcomingEventsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await getUpcomingEvents('31185', '2', new Date().toISOString().slice(0, 10), 'E');
-      const events = res.data?.TBEventListTypeResult?.Result?.Events || [];
+      const { getEvents } = await import('../api/eventService');
+      const res = await getEvents('31185', '13010', '0');
+      const events = res.data?.EventsListResult || [];
       const data = events.map(e => ({
-        Id: e.MemberID, EventTitle: e.title, EventDate: e.eventDate,
-        EventVenue: e.EventVenue, EventDesc: e.Description,
-        EventImage: e.eventImg, GroupId: e.GroupId, RegLink: e.RegLink,
+        Id: e.eventID, EventTitle: e.eventTitle, EventDate: e.eventDateTime,
+        EventVenue: e.venue, EventDesc: '',
+        EventImage: e.eventImg, GroupId: e.grpID, RegLink: '',
       }));
       setAllItems(data);
       setItems(data);
@@ -84,25 +85,15 @@ export default function UpcomingEventsPage() {
 
   const handleDelete = async () => {
     try {
-      await deleteEvent(deleteTarget.Id || deleteTarget.id);
+      await deleteEvent(String(deleteTarget.Id || deleteTarget.id).replace(/^E/, ''));
+      alert('Event deleted successfully');
       setDeleteTarget(null); fetchData();
     } catch { setError('Delete failed'); }
   };
 
-  // Group items by year for separator rows
+  // Build rows without year separators
   const buildRows = () => {
-    const rows = [];
-    let lastYear = null;
-    for (const item of items) {
-      const eventDate = item.EventDate || item.eventDate || '';
-      const year = getYear(eventDate);
-      if (year && year !== lastYear) {
-        rows.push({ type: 'year', year });
-        lastYear = year;
-      }
-      rows.push({ type: 'item', item });
-    }
-    return rows;
+    return items.map(item => ({ type: 'item', item }));
   };
 
   if (loading) return <LoadingSpinner className="h-screen" />;
@@ -123,9 +114,6 @@ export default function UpcomingEventsPage() {
             placeholder="Search"
             style={{ height: '32px', border: '1px solid #ccc', borderRadius: '4px', padding: '4px 10px', fontSize: '13px', outline: 'none', width: '150px' }}
           />
-          <button style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#2196F3', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-          </button>
           <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ height: '32px', border: '1px solid #ccc', borderRadius: '4px', padding: '4px 8px', fontSize: '13px', outline: 'none' }}>
             {FILTER_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
           </select>
@@ -178,16 +166,16 @@ export default function UpcomingEventsPage() {
 
                 return (
                   <tr key={item.Id || item.id || idx} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f8f8f8', borderBottom: '1px solid #eee' }}>
-                    {/* Date (day number) */}
-                    <td style={{ padding: '10px 12px', fontWeight: 'bold', fontSize: '14px', color: '#333', verticalAlign: 'top' }}>
-                      {dayNum}
+                    {/* Date */}
+                    <td style={{ padding: '10px 12px', fontWeight: 'bold', fontSize: '12px', color: '#333', verticalAlign: 'top' }}>
+                      {eventDate ? new Date(eventDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
                     </td>
                     {/* Event details */}
                     <td style={{ padding: '10px 16px' }}>
                       <div style={{ fontWeight: '600', color: '#333', fontSize: '13px' }}>{title}</div>
                       <div style={{ fontSize: '12px', marginTop: '2px', color: '#666' }}>{time}</div>
                       <div style={{ fontSize: '11px', marginTop: '2px' }}>
-                        <span style={{ color: '#666' }}>Mutual wait</span>
+                        <span style={{ color: '#666' }}>{item.EventVenue || item.eventVenue || item.EventDesc || ''}</span>
                         <span style={{ color: '#666' }}> | </span>
                         <span style={{ color: filterColor, fontWeight: '500' }}>{filterType}</span>
                         {(rsvp === '1' || rsvp === 'true' || rsvp === true) && (

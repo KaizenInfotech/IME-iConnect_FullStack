@@ -16,8 +16,8 @@ export const getMelangeItems = (FinanceYear) =>
 export const createMerItem = (data) =>
   api.post('/Gallery/AddMER', data);
 
-export const updateMerItem = (data) =>
-  api.post('/Gallery/UpdateMER', data);
+export const updateMerItem = (id, data) =>
+  api.post('/Gallery/UpdateMER', { ...data, MER_ID: String(id) });
 
 export const deleteMerItem = (MER_ID) =>
-  api.post('/Gallery/DeleteMER', { MER_ID });
+  api.post('/Gallery/DeleteMER', { MER_ID: String(MER_ID) });

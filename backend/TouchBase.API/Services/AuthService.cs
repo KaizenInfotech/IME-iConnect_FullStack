@@ -344,4 +344,22 @@ public class AuthService : IAuthService
 
         return new { status = "0", message = "Password sent successfully on your registered email address" };
     }
+
+    public async Task<object> ChangePassword(string mobileNo, string oldPassword, string newPassword)
+    {
+        var admin = await _db.WebAdmins.FirstOrDefaultAsync(a => a.MobileNo == mobileNo && a.IsActive);
+        if (admin == null)
+            return new { status = "1", message = "User not found" };
+
+        if (admin.Password != oldPassword)
+            return new { status = "1", message = "Old password is incorrect" };
+
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 4)
+            return new { status = "1", message = "New password must be at least 4 characters" };
+
+        admin.Password = newPassword;
+        await _db.SaveChangesAsync();
+
+        return new { status = "0", message = "Password changed successfully" };
+    }
 }

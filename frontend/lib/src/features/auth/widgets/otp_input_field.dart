@@ -4,9 +4,9 @@ import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 
-/// Replaces iOS 4 separate UITextFields (OTPField1–4) with auto-focus.
-/// Each box accepts a single digit and automatically advances to the next.
-/// On completing the last digit, calls [onCompleted] with the full OTP string.
+/// Single hidden TextField approach — one TextField captures all digits,
+/// display boxes show individual characters. Keyboard stays stable because
+/// there is only ONE focus node and ONE TextField.
 class OtpInputField extends StatefulWidget {
   const OtpInputField({
     super.key,
@@ -15,13 +15,8 @@ class OtpInputField extends StatefulWidget {
     this.onChanged,
   });
 
-  /// Number of OTP digits (iOS uses 4).
   final int length;
-
-  /// Called when all digits are filled.
   final ValueChanged<String>? onCompleted;
-
-  /// Called on every digit change.
   final ValueChanged<String>? onChanged;
 
   @override
@@ -29,111 +24,105 @@ class OtpInputField extends StatefulWidget {
 }
 
 class OtpInputFieldState extends State<OtpInputField> {
-  late List<TextEditingController> _controllers;
-  late List<FocusNode> _focusNodes;
+  late TextEditingController _controller;
+  late FocusNode _focusNode;
 
   @override
   void initState() {
     super.initState();
-    _controllers =
-        List.generate(widget.length, (_) => TextEditingController());
-    _focusNodes = List.generate(widget.length, (_) => FocusNode());
+    _controller = TextEditingController();
+    _focusNode = FocusNode();
+    _controller.addListener(_onTextChanged);
   }
 
   @override
   void dispose() {
-    for (final c in _controllers) {
-      c.dispose();
-    }
-    for (final f in _focusNodes) {
-      f.dispose();
-    }
+    _controller.removeListener(_onTextChanged);
+    _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
-  /// Get the current OTP string.
-  String get otp => _controllers.map((c) => c.text).join();
+  String get otp => _controller.text;
 
-  /// Clear all fields and focus the first one (iOS: clears all 4 fields).
   void clear() {
-    for (final c in _controllers) {
-      c.clear();
-    }
-    if (_focusNodes.isNotEmpty) {
-      _focusNodes[0].requestFocus();
-    }
-    setState(() {});
+    _controller.clear();
+    _focusNode.requestFocus();
   }
 
-  void _onChanged(int index, String value) {
-    if (value.length == 1 && index < widget.length - 1) {
-      // iOS: textFieldDidChange1–3 advance to next field
-      _focusNodes[index + 1].requestFocus();
-    }
-
-    if (value.length == 1 && index == widget.length - 1) {
-      // iOS: textFieldDidChange4 triggers NextButtonAction and resigns
-      _focusNodes[index].unfocus();
-      final otpValue = otp;
-      widget.onCompleted?.call(otpValue);
-    }
-
-    widget.onChanged?.call(otp);
+  void _onTextChanged() {
     setState(() {});
-  }
-
-  /// iOS: textFieldDidBeginEditing — tapping any filled field clears all and
-  /// refocuses field 1.
-  void _onTap(int index) {
-    final hasValue = _controllers[index].text.isNotEmpty;
-    if (hasValue) {
-      clear();
+    widget.onChanged?.call(_controller.text);
+    if (_controller.text.length == widget.length) {
+      _focusNode.unfocus();
+      widget.onCompleted?.call(_controller.text);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(widget.length, (index) {
-        final isFirst = index == 0;
-        return Expanded(
-          child: Container(
-            height: 48,
-            margin: EdgeInsets.only(left: isFirst ? 0 : 8),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: _controllers[index].text.isNotEmpty
-                    ? AppColors.primary
-                    : AppColors.gray,
-                width: 1,
+    return GestureDetector(
+      onTap: () {
+        _focusNode.requestFocus();
+      },
+      child: Stack(
+        children: [
+          // Hidden TextField that captures input
+          Opacity(
+            opacity: 0,
+            child: SizedBox(
+              height: 48,
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                autofocus: false,
+                keyboardType: TextInputType.number,
+                maxLength: widget.length,
+                decoration: const InputDecoration(
+                  counterText: '',
+                  border: InputBorder.none,
+                ),
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: TextField(
-              controller: _controllers[index],
-              focusNode: _focusNodes[index],
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.number,
-              maxLength: 1,
-              style: const TextStyle(
-                fontFamily: AppTextStyles.fontFamily,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-              decoration: const InputDecoration(
-                counterText: '',
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onChanged: (value) => _onChanged(index, value),
-              onTap: () => _onTap(index),
             ),
           ),
-        );
-      }),
+          // Visible OTP boxes
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(widget.length, (index) {
+              final isFirst = index == 0;
+              final text = _controller.text;
+              final hasChar = index < text.length;
+              final isCurrent = index == text.length && _focusNode.hasFocus;
+              return Expanded(
+                child: Container(
+                  height: 48,
+                  margin: EdgeInsets.only(left: isFirst ? 0 : 8),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: hasChar || isCurrent
+                          ? AppColors.primary
+                          : AppColors.gray,
+                      width: isCurrent ? 2 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    hasChar ? text[index] : '',
+                    style: const TextStyle(
+                      fontFamily: AppTextStyles.fontFamily,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
     );
   }
 }

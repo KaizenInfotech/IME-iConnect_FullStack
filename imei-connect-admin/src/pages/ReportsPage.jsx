@@ -30,18 +30,30 @@ export default function ReportsPage() {
     })();
   }, []);
 
-  const downloadCSV = (data, filename) => {
+  const downloadExcel = (data, headers, filename) => {
     if (!data || data.length === 0) { alert('No records found for download.'); return; }
-    const headers = Object.keys(data[0]);
-    const csv = [
-      headers.join(','),
-      ...data.map(row => headers.map(h => `"${(row[h] ?? '').toString().replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const headerRow = headers.map(h => `<th style="background-color:#1a297d;color:#fff;font-weight:bold;padding:5px 10px;border:1px solid #000;font-size:12px;">${h}</th>`).join('');
+    const bodyRows = data.map(row =>
+      headers.map(h => `<td style="padding:4px 8px;border:1px solid #ccc;font-size:12px;">${row[h] ?? ''}</td>`).join('')
+    ).map(r => `<tr>${r}</tr>`).join('');
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Sheet1</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
+      <body><table border="1" cellpadding="0" cellspacing="0"><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table></body></html>`;
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const formatDOB = (dateStr) => {
+    if (!dateStr) return '';
+    // Handle dd/MM/yyyy format
+    if (dateStr.includes('/')) return dateStr;
+    // Handle yyyy-MM-dd or ISO format
+    const d = new Date(dateStr);
+    if (isNaN(d)) return dateStr;
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
   };
 
   const handleMembersDownload = async () => {
@@ -50,8 +62,22 @@ export default function ReportsPage() {
     setMembersError('');
     try {
       const res = await getMembers(gid);
-      const data = res.data?.MemberDetail?.NewMemberList || [];
-      downloadCSV(data, 'MembersList.csv');
+      const raw = res.data?.MemberDetail?.NewMemberList || [];
+      if (!raw.length) { alert('No records found for download.'); return; }
+      const selectedGroup = groups.find(g => String(g.Id) === String(gid));
+      const branchName = selectedGroup?.GrpName || '';
+      const memberHeaders = ['SrNo', 'Branch & Chapter', 'MemberName', 'MemberShipId', 'Email', 'MobileNumber', 'DOB', 'Device name'];
+      const data = raw.map((m, idx) => ({
+        SrNo: idx + 1,
+        'Branch & Chapter': m.GrpName || branchName,
+        MemberName: [m.memberName, m.lastName].filter(Boolean).join(' '),
+        MemberShipId: m.member_IMEI_id || '',
+        Email: m.memberEmail || '',
+        MobileNumber: m.memberMobile || '',
+        DOB: formatDOB(m.member_date_of_birth),
+        'Device name': '',
+      }));
+      downloadExcel(data, memberHeaders, 'MembersList.xls');
     } catch { alert('Failed to download Members List'); }
   };
 
@@ -60,8 +86,21 @@ export default function ReportsPage() {
     setUsersError('');
     try {
       const res = await getMembers(usersListGroup);
-      const data = res.data?.MemberDetail?.NewMemberList || [];
-      downloadCSV(data, 'UsersList.csv');
+      const raw = res.data?.MemberDetail?.NewMemberList || [];
+      if (!raw.length) { alert('No records found for download.'); return; }
+      const selectedGroup = groups.find(g => String(g.Id) === String(usersListGroup));
+      const branchName = selectedGroup?.GrpName || '';
+      const userHeaders = ['SrNo', 'Branch & Chapter', 'MemberShipId', 'MemberName', 'MobileNo', 'EmailID', 'phone version'];
+      const data = raw.map((m, idx) => ({
+        SrNo: idx + 1,
+        'Branch & Chapter': m.GrpName || branchName,
+        MemberShipId: m.member_IMEI_id || '',
+        MemberName: [m.memberName, m.lastName].filter(Boolean).join(' '),
+        MobileNo: m.memberMobile || '',
+        EmailID: m.memberEmail || '',
+        'phone version': '',
+      }));
+      downloadExcel(data, userHeaders, 'UsersList.xls');
     } catch { alert('Failed to download Users List'); }
   };
 
@@ -74,7 +113,7 @@ export default function ReportsPage() {
             <span style={{ color: '#1a297d', fontSize: '14px' }}>{groupName}</span>
             <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#333' }}> - Reports</span>
           </div>
-          <button onClick={() => navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer' }}>
+          <button onClick={() => filterGroupId ? navigate(`/groups/${filterGroupId}`) : navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer' }}>
             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
             Back
           </button>

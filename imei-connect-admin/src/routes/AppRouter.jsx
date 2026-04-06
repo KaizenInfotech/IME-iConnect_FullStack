@@ -40,6 +40,7 @@ import AddUpcomingEventPage from '../pages/AddUpcomingEventPage';
 import ReportsPage from '../pages/ReportsPage';
 import BannersPage from '../pages/BannersPage';
 import SettingsPage from '../pages/SettingsPage';
+import ChangePasswordPage from '../pages/ChangePasswordPage';
 import ExecutiveCommitteePage from '../pages/ExecutiveCommitteePage';
 import NotificationPage from '../pages/NotificationPage';
 
@@ -101,6 +102,7 @@ export default function AppRouter() {
           <Route path="executive-committee" element={<ExecutiveCommitteePage />} />
           <Route path="notifications" element={<NotificationPage />} />
           <Route path="banners" element={<BannersPage />} />
+          <Route path="change-password" element={<ChangePasswordPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

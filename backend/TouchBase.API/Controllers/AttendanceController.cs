@@ -75,5 +75,6 @@ public class AttendanceMemberInput
 public class AttendanceVisitorInput
 {
     public string? VisitorName { get; set; }
+    public string? InvitedBy { get; set; }
     public string? Type { get; set; }
 }

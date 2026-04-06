@@ -22,7 +22,8 @@ export default function MemberDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const groupId = searchParams.get('groupId') || '33359';
+  const filterGroupId = searchParams.get('groupId');
+  const groupId = filterGroupId || '33359';
   const fileInputRef = useRef(null);
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -31,6 +32,9 @@ export default function MemberDetailPage() {
   const [errors, setErrors] = useState({});
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [profilePhotoPreview, setProfilePhotoPreview] = useState('');
+  const [gradeOptions, setGradeOptions] = useState([]);
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [chapterOptions, setChapterOptions] = useState([]);
 
   const [form, setForm] = useState({
     FirstName: '',
@@ -40,9 +44,7 @@ export default function MemberDetailPage() {
     Mobile: '',
     Email: '',
     BirthDate: '',
-    BirthMonth: '',
     AnniversaryDate: '',
-    AnniversaryMonth: '',
     BloodGroup: '- Select -',
     SecondaryMobile: '',
     MembershipID: '',
@@ -62,6 +64,25 @@ export default function MemberDetailPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Fetch dropdowns
+      try {
+        const { default: api } = await import('../api/axiosInstance');
+        const { getClubList } = await import('../api/groupService');
+        const [gradeRes, catRes, clubRes] = await Promise.all([
+          api.post('/FindRotarian/GetMemberGradeList', {}),
+          api.post('/FindRotarian/GetCategoryList', {}),
+          getClubList(),
+        ]);
+        setGradeOptions((gradeRes.data?.str?.Table || []).map(g => {
+          const n = g.name; return typeof n === 'object' ? n?.name || '' : n || '';
+        }).filter(Boolean));
+        setCategoryOptions((catRes.data?.str?.Table || []).map(c => {
+          const n = c.name; return typeof n === 'object' ? n?.name || '' : n || '';
+        }).filter(Boolean));
+        const clubs = clubRes.data?.TBGetClubResult?.ClubResult?.Table || [];
+        setChapterOptions(clubs.map(c => c.group_name || '').filter(Boolean));
+      } catch {}
+
       const res = await getMember(id, groupId);
       const tbl = res.data?.TBGetSponsorReferredResult?.Result?.Table;
       const m = Array.isArray(tbl) && tbl.length > 0 ? tbl[0] : null;
@@ -69,8 +90,13 @@ export default function MemberDetailPage() {
       if (m) {
         const dob = m.DOB || '';
         const doa = m.DOA || '';
-        const dobParts = dob.includes('/') ? dob.split('/') : [];
-        const doaParts = doa.includes('/') ? doa.split('/') : [];
+        // Support both dd/MM/yyyy and yyyy-MM-dd formats
+        let dobDay = '', dobMonth = '';
+        if (dob.includes('/')) { const p = dob.split('/'); dobDay = p[0]; dobMonth = p[1]; }
+        else if (dob.includes('-')) { const p = dob.split('-'); dobDay = p[2]; dobMonth = p[1]; }
+        let doaDay = '', doaMonth = '';
+        if (doa.includes('/')) { const p = doa.split('/'); doaDay = p[0]; doaMonth = p[1]; }
+        else if (doa.includes('-')) { const p = doa.split('-'); doaDay = p[2]; doaMonth = p[1]; }
         setForm({
           FirstName: m.First_Name || '',
           MiddleName: m.Middle_Name || '',
@@ -78,10 +104,8 @@ export default function MemberDetailPage() {
           Country: m.Country || '- Select -',
           Mobile: m.Whatsapp_num || '',
           Email: m.member_email_id || '',
-          BirthDate: dobParts.length >= 1 ? dobParts[0] : '',
-          BirthMonth: dobParts.length >= 2 ? dobParts[1] : '',
-          AnniversaryDate: doaParts.length >= 1 ? doaParts[0] : '',
-          AnniversaryMonth: doaParts.length >= 2 ? doaParts[1] : '',
+          BirthDate: dob && dob !== '1753-01-01' ? (dob.includes('/') ? dob.split('/').reverse().join('-') : dob) : '',
+          AnniversaryDate: doa && doa !== '1753-01-01' ? (doa.includes('/') ? doa.split('/').reverse().join('-') : doa) : '',
           BloodGroup: m.blood_Group || '- Select -',
           SecondaryMobile: m.Secondry_num || '',
           MembershipID: m.IMEI_Membership_Id || '',
@@ -95,7 +119,9 @@ export default function MemberDetailPage() {
           PinCode: m.pincode || '',
           ResCountry: m.Country || '- Select -',
         });
-        setProfilePhotoPreview(m.member_profile_photo_path || '');
+        const photoUrl = m.member_profile_photo_path || m.profilePic || m.ProfilePic || '';
+        console.log('[MemberDetail] photo URL:', photoUrl);
+        setProfilePhotoPreview(photoUrl);
       }
     } catch {
       setError('Failed to load member details');
@@ -134,21 +160,21 @@ export default function MemberDetailPage() {
         memberName: [form.FirstName, form.MiddleName, form.LastName].filter(Boolean).join(' ').trim(),
         memberMobile: form.Mobile,
         memberEmailid: form.Email,
+        ProfilePicPath: profilePhotoPreview || '',
       });
-      // Update address
-      if (form.Address || form.City || form.State || form.PinCode) {
-        await updateAddress({
-          profileID: profileId,
-          addressType: 'Residence',
-          address: form.Address,
-          city: form.City,
-          state: form.State === '- Select -' ? '' : form.State,
-          country: form.ResCountry === '- Select -' ? '' : form.ResCountry,
-          pincode: form.PinCode,
-        });
-      }
+      // Update address and country
+      await updateAddress({
+        profileID: profileId,
+        addressType: 'Residence',
+        address: form.Address,
+        city: form.City,
+        state: form.State === '- Select -' ? '' : form.State,
+        country: form.Country && form.Country !== '- Select -' ? form.Country : (form.ResCountry === '- Select -' ? '' : form.ResCountry),
+        pincode: form.PinCode,
+      });
       setError('');
       alert('Member updated successfully');
+      navigate(filterGroupId ? `/members?groupId=${filterGroupId}` : '/members');
     } catch (err) {
       setError(err.response?.data?.message || 'Save failed');
     } finally {
@@ -202,17 +228,17 @@ export default function MemberDetailPage() {
       </div>
 
       {/* Top Buttons */}
-      <div className="flex items-center gap-[8px] mb-[15px]">
+      <div className="flex items-center gap-[8px] mb-[15px]" style={{ justifyContent: 'flex-end' }}>
         <button
           onClick={handleSave}
           disabled={saving}
           className="px-[12px] py-[6px] text-[13px] text-white rounded-[4px] border-0 cursor-pointer disabled:opacity-50"
-          style={{ backgroundColor: '#6b9300' }}
+          style={{ backgroundColor: '#1a297d' }}
         >
           {saving ? 'Saving...' : 'Save'}
         </button>
         <button
-          onClick={() => navigate('/members')}
+          onClick={() => navigate(filterGroupId ? `/members?groupId=${filterGroupId}` : '/members')}
           className="px-[12px] py-[6px] text-[13px] text-white rounded-[4px] border-0 cursor-pointer bg-[#1a297d]"
         >
           Back
@@ -238,7 +264,7 @@ export default function MemberDetailPage() {
             </h4>
             <div className="grid grid-cols-3 gap-[12px] mb-[15px]">
               <div>
-                <label className={labelCls}>First Name<span className={mandatoryCls}>mandatory</span></label>
+                <label className={labelCls}>First Name</label>
                 <input type="text" value={form.FirstName} onChange={(e) => setField('FirstName', e.target.value)} className={inputCls} />
                 {errors.FirstName && <span className="text-[#dd4b39] text-[11px]">{errors.FirstName}</span>}
               </div>
@@ -253,20 +279,11 @@ export default function MemberDetailPage() {
             </div>
             <div className="grid grid-cols-3 gap-[12px] mb-[15px]">
               <div>
-                <label className={labelCls}>
-                  Country
-                  <span className={mandatoryCls}>mandatory</span>
-                </label>
-                <select
-                  value={form.Country}
-                  onChange={(e) => setField('Country', e.target.value)}
-                  className={inputCls}
-                >
-                  {countryOptions.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
+                <label className={labelCls}>Country</label>
+                <select value={form.Country} onChange={(e) => setField('Country', e.target.value)} className={inputCls}>
+                  <option value="">- Select -</option>
+                  {countryOptions.filter(c => c !== '- Select -').map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
-                {errors.Country && <span className="text-[#dd4b39] text-[11px]">{errors.Country}</span>}
               </div>
               <div>
                 <label className={labelCls}>
@@ -275,8 +292,8 @@ export default function MemberDetailPage() {
                 <input
                   type="text"
                   value={form.Mobile}
-                  onChange={(e) => setField('Mobile', e.target.value)}
-                  className={inputCls}
+                  disabled
+                  className={inputDisabledCls}
                 />
               </div>
               <div>
@@ -287,17 +304,17 @@ export default function MemberDetailPage() {
           </div>
 
           {/* Profile Photo (col-md-2) */}
-          <div className="w-[150px] flex-shrink-0">
-            <h4 className="text-[14px] font-semibold text-[#333] mb-[15px] border-b border-[#eee] pb-[8px]">
+          <div style={{ width: '150px', flexShrink: 0 }}>
+            <h4 style={{ fontSize: '14px', fontWeight: '600', color: '#333', marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>
               Profile Photo
             </h4>
-            <div className="flex flex-col items-center">
-              <div className="w-[80px] h-[80px] border border-[#d0d0d0] rounded-[4px] mb-[8px] overflow-hidden bg-[#f5f5f5] flex items-center justify-center">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ width: '80px', height: '80px', border: '1px solid #d0d0d0', borderRadius: '4px', marginBottom: '8px', overflow: 'hidden', backgroundColor: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {profilePhotoPreview ? (
-                  <img src={profilePhotoPreview} alt="Profile" className="w-full h-full object-cover" />
+                  <img src={profilePhotoPreview} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <span className="text-[#ccc] text-[24px]">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                   </span>
                 )}
               </div>
@@ -311,7 +328,7 @@ export default function MemberDetailPage() {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="px-[10px] py-[4px] text-[11px] text-white rounded-[4px] border-0 cursor-pointer mb-[4px]"
-                style={{ backgroundColor: '#6b9300' }}
+                style={{ backgroundColor: '#1a297d' }}
               >
                 ATTACH FILE
               </button>
@@ -338,51 +355,17 @@ export default function MemberDetailPage() {
         </h4>
         <div className="grid grid-cols-4 gap-[12px] mb-[15px]">
           <div>
-            <label className={labelCls}>Birth Date (d/m)</label>
-            <div className="flex gap-[6px]">
-              <select
-                value={form.BirthDate}
-                onChange={(e) => setField('BirthDate', e.target.value)}
-                className={`${inputCls} w-[60%]`}
-              >
-                <option value="">Day</option>
-                {dayOptions.map((d) => (
-                  <option key={d} value={String(d).padStart(2, '0')}>{d}</option>
-                ))}
-              </select>
-              <select
-                value={form.BirthMonth}
-                onChange={(e) => setField('BirthMonth', e.target.value)}
-                className={`${inputCls} w-[40%]`}
-              >
-                {monthOptions.map((m) => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </select>
+            <label className={labelCls}>Birth Date</label>
+            <div className="flex gap-[6px] items-center">
+              <input type="date" value={form.BirthDate} onChange={(e) => setField('BirthDate', e.target.value)} className={inputCls} />
+              {form.BirthDate && <button type="button" onClick={() => setField('BirthDate', '')} style={{ background: 'none', border: 'none', color: '#1a297d', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>Remove</button>}
             </div>
           </div>
           <div>
-            <label className={labelCls}>Anniversary Date (d/m)</label>
-            <div className="flex gap-[6px]">
-              <select
-                value={form.AnniversaryDate}
-                onChange={(e) => setField('AnniversaryDate', e.target.value)}
-                className={`${inputCls} w-[60%]`}
-              >
-                <option value="">Day</option>
-                {dayOptions.map((d) => (
-                  <option key={d} value={String(d).padStart(2, '0')}>{d}</option>
-                ))}
-              </select>
-              <select
-                value={form.AnniversaryMonth}
-                onChange={(e) => setField('AnniversaryMonth', e.target.value)}
-                className={`${inputCls} w-[40%]`}
-              >
-                {monthOptions.map((m) => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </select>
+            <label className={labelCls}>Anniversary Date</label>
+            <div className="flex gap-[6px] items-center">
+              <input type="date" value={form.AnniversaryDate} onChange={(e) => setField('AnniversaryDate', e.target.value)} className={inputCls} />
+              {form.AnniversaryDate && <button type="button" onClick={() => setField('AnniversaryDate', '')} style={{ background: 'none', border: 'none', color: '#1a297d', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>Remove</button>}
             </div>
           </div>
           <div>
@@ -435,6 +418,7 @@ export default function MemberDetailPage() {
               className={inputCls}
             >
               <option>- Select -</option>
+              {gradeOptions.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
           <div>
@@ -445,6 +429,7 @@ export default function MemberDetailPage() {
               className={inputCls}
             >
               <option>- Select -</option>
+              {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
         </div>
@@ -466,6 +451,7 @@ export default function MemberDetailPage() {
               className={inputCls}
             >
               <option>- Select -</option>
+              {chapterOptions.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
         </div>

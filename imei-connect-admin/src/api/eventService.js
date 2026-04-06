@@ -1,22 +1,28 @@
 import api from './axiosInstance';
 
-export const getEvents = (groupId, memberProfileId, flag = '0') =>
-  api.post('/Event/GetEventList', { groupId, memberProfileId, flag });
+export const getEvents = (grpId, groupProfileID, flag = '0') =>
+  api.post('/Event/GetEventList', { grpId, groupProfileID, flag });
 
 export const getEvent = (eventId, groupId) =>
-  api.post('/Event/GetEventDetails', { eventId, groupId });
+  api.post('/Event/GetEventDetails', { eventID: String(eventId), groupProfileID: String(groupId || '0') });
 
 export const createEvent = (data) =>
-  api.post('/Event/AddEventNew', data);
+  api.post('/Event/AddEvent_New', data);
 
 export const updateEvent = (data) =>
-  api.post('/Event/AddEventNew', data);
+  api.post('/Event/AddEvent_New', data);
 
 export const deleteEvent = (eventId) =>
   api.post('/Event/DeleteEvent', { eventId });
 
 export const answerEvent = (data) =>
   api.post('/Event/AnsweringEvent', data);
+
+export const getEventExtras = (eventID) =>
+  api.post('/Event/GetEventExtras', { eventID: String(eventID) });
+
+export const saveEventExtras = (data) =>
+  api.post('/Event/SaveEventExtras', data);
 
 export const getUpcomingEvents = (GroupID, groupCategory, SelectedDate, Type) =>
   api.post('/Celebrations/GetMonthEventListTypeWise_National', {

@@ -131,6 +131,7 @@ class FindRotarianProvider extends ChangeNotifier {
         final jsonData = json.decode(response.body) as Map<String, dynamic>;
         final result = TBGetRotarianResult.fromJson(
             jsonData['TBGetRotarianResult'] as Map<String, dynamic>? ??
+                jsonData['TBFindRotarianResult'] as Map<String, dynamic>? ??
                 jsonData);
         if (result.isSuccess) {
           _rotarians = result.rotarians ?? [];
@@ -188,6 +189,7 @@ class FindRotarianProvider extends ChangeNotifier {
         // iOS: response → TBGetRotarianResult → { status, message, Result → { Table: [...] } }
         final wrapper =
             jsonData['TBGetRotarianResult'] as Map<String, dynamic>? ??
+                jsonData['TBRotarianDetailsResult'] as Map<String, dynamic>? ??
                 jsonData;
         final result = TBRotarianDetailResult.fromJson(wrapper);
         if (result.isSuccess) {

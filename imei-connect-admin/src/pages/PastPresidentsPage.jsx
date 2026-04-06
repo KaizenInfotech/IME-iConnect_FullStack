@@ -57,16 +57,18 @@ export default function PastPresidentsPage() {
   const handleDelete = async () => {
     try {
       await deletePastPresident(deleteTarget.Id || deleteTarget.id);
+      alert(filterGroupId ? 'Past Chairman deleted successfully' : 'Past President deleted successfully');
       setDeleteTarget(null); fetchData();
     } catch { setError('Delete failed'); }
   };
 
   const openEdit = (item) => {
-    const name = item.MemberName || item.memberName || '';
+    const rawName = item.MemberName || item.memberName || '';
     const tenure = item.TenureYear || item.tenureYear || '';
+    const displayName = tenure ? `${rawName.replace(new RegExp(`\\s*\\(${tenure}\\)`, 'g'), '').trim()} (${tenure})` : rawName;
     setEditing(item);
     setForm({
-      MemberName: tenure ? `${name} (${tenure})` : name,
+      MemberName: displayName,
       Designation: item.Designation || item.designation || 'Past President',
       PhotoFile: null,
     });
@@ -76,7 +78,7 @@ export default function PastPresidentsPage() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ MemberName: '', Designation: '', PhotoFile: null });
+    setForm({ MemberName: '', Designation: 'Past President', PhotoFile: null });
     setPhotoPreview(null);
     setShowModal(true);
   };
@@ -101,16 +103,23 @@ export default function PastPresidentsPage() {
     if (!form.Designation.trim()) { alert('Please Enter Designation'); return; }
     setSaving(true);
     try {
+      const groupId = filterGroupId || '31185';
       if (editing) {
         await updatePastPresident(editing.Id || editing.id, {
+          GroupId: groupId,
           MemberName: form.MemberName,
           Designation: form.Designation,
+          PhotoPath: photoPreview || '',
         });
+        alert(filterGroupId ? 'Past Chairman updated successfully' : 'Past President updated successfully');
       } else {
         await createPastPresident({
+          GroupId: groupId,
           MemberName: form.MemberName,
           Designation: form.Designation,
+          PhotoPath: photoPreview || '',
         });
+        alert(filterGroupId ? 'Past Chairman added successfully' : 'Past President added successfully');
       }
       setShowModal(false);
       setEditing(null);
@@ -134,7 +143,7 @@ export default function PastPresidentsPage() {
           <button onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer' }}>
             + Add
           </button>
-          <button onClick={() => navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer' }}>
+          <button onClick={() => filterGroupId ? navigate(`/groups/${filterGroupId}`) : navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#1a297d', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', fontSize: '13px', cursor: 'pointer' }}>
             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
             Back
           </button>
@@ -162,8 +171,10 @@ export default function PastPresidentsPage() {
               <tr><td colSpan={3} style={{ padding: '30px', textAlign: 'center', color: '#999' }}>No Record Found!</td></tr>
             ) : (
               items.map((item, idx) => {
-                const name = item.MemberName || item.memberName || '';
+                const rawName = item.MemberName || item.memberName || '';
                 const tenure = item.TenureYear || item.tenureYear || '';
+                // Strip duplicate tenure suffix from name if it was saved with it
+                const name = tenure ? rawName.replace(new RegExp(`\\s*\\(${tenure}\\)`, 'g'), '').trim() : rawName;
                 return (
                   <tr key={item.Id || item.id || idx} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f8f8f8', borderBottom: '1px solid #eee' }}>
                     <td style={{ padding: '10px 16px', color: '#333' }}>
@@ -244,7 +255,7 @@ export default function PastPresidentsPage() {
                   </div>
                   <div style={{ marginBottom: '10px' }}>
                     <label style={labelStyle}>Designation</label>
-                    <input type="text" value={form.Designation} onChange={(e) => setForm({ ...form, Designation: e.target.value })} style={inputStyle} />
+                    <input type="text" value={form.Designation} readOnly style={{ ...inputStyle, backgroundColor: '#f0f0f0', cursor: 'not-allowed' }} />
                   </div>
                 </div>
               </div>

@@ -6,6 +6,16 @@ import { getCountries } from '../api/utilityService';
 
 const meetingDays = ['-Select-', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+const timeOptions = (() => {
+  const opts = ['-Select-'];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 10) {
+      opts.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
+  }
+  return opts;
+})();
+
 const inputStyle = {
   width: '100%', height: '34px', border: '1px solid #ccc',
   borderRadius: '2px', padding: '4px 10px', fontSize: '13px', outline: 'none',
@@ -183,21 +193,23 @@ export default function AddGroupPage() {
           </div>
           <div style={{ flex: '1 1 25%' }}>
             <label style={labelStyle}>From Time</label>
-            <input
-              type="text"
+            <select
               value={form.FromTime}
               onChange={(e) => setForm({ ...form, FromTime: e.target.value })}
-              style={inputStyle}
-            />
+              style={{ ...inputStyle, backgroundColor: '#fff' }}
+            >
+              {timeOptions.map(t => <option key={t} value={t === '-Select-' ? '' : t}>{t}</option>)}
+            </select>
           </div>
           <div style={{ flex: '1 1 25%' }}>
             <label style={labelStyle}>To Time</label>
-            <input
-              type="text"
+            <select
               value={form.ToTime}
               onChange={(e) => setForm({ ...form, ToTime: e.target.value })}
-              style={inputStyle}
-            />
+              style={{ ...inputStyle, backgroundColor: '#fff' }}
+            >
+              {timeOptions.map(t => <option key={t} value={t === '-Select-' ? '' : t}>{t}</option>)}
+            </select>
           </div>
         </div>
 
