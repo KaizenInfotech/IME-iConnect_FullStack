@@ -6,8 +6,8 @@ class ApiConstants {
   // ─── BASE URL ───────────────────────────────────────────
   // Physical device: use Mac's local IP (both platforms)
   // Simulator/Emulator: Android uses 10.0.2.2, iOS uses localhost
-  // static const String baseUrl = 'https://api.imeiconnect.com/V2/api/';
-  static const String baseUrl = 'http://localhost:5050/api/';
+  static const String baseUrl = 'https://api.imeiconnect.com/V2/api/';
+  // static const String baseUrl = 'http://localhost:5050/api/';
 
   // ─── STATIC WEB PAGES ──────────────────────────────────
   static const String termsAndConditionsUrl =
