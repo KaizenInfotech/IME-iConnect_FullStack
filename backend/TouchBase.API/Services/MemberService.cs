@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using TouchBase.API.Controllers;
 using TouchBase.API.Data;
@@ -11,12 +12,14 @@ public class MemberService : IMemberService
 {
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private const int PageSize = 25;
 
-    public MemberService(AppDbContext db, IHttpClientFactory httpClientFactory)
+    public MemberService(AppDbContext db, IHttpClientFactory httpClientFactory, IHttpContextAccessor httpContextAccessor)
     {
         _db = db;
         _httpClientFactory = httpClientFactory;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<DirectoryListResponse> GetDirectoryList(DirectoryListRequest request)
@@ -145,7 +148,9 @@ public class MemberService : IMemberService
             profile.MemberEmail = request.memberEmailid;
             if (profile.User != null) profile.User.Email = request.memberEmailid;
         }
-        if (request.ProfilePicPath != null) profile.ProfilePic = request.ProfilePicPath;
+        if (!string.IsNullOrEmpty(request.ProfilePicPath)) profile.ProfilePic = request.ProfilePicPath;
+        if (request.dob != null) profile.Dob = request.dob;
+        if (request.doa != null) profile.Doa = request.doa;
         profile.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return new UpdateResponse { status = "0", message = "success" };
@@ -157,7 +162,7 @@ public class MemberService : IMemberService
         var members = await _db.GroupMembers.Include(gm => gm.MemberProfile).ThenInclude(mp => mp.User)
             .Include(gm => gm.MemberProfile).ThenInclude(mp => mp.Addresses)
             .Include(gm => gm.Group)
-            .Where(gm => gm.GroupId == grpId)
+            .Where(gm => gm.GroupId == grpId && gm.IsActive)
             .Select(gm => new
             {
                 masterID = gm.MemberProfile.UserId.ToString(),
@@ -261,10 +266,15 @@ public class MemberService : IMemberService
         var path = Path.Combine("wwwroot", "uploads", "profile"); Directory.CreateDirectory(path);
         await using var stream = new FileStream(Path.Combine(path, fileName), FileMode.Create);
         await file.CopyToAsync(stream);
-        var photoUrl = $"/uploads/profile/{fileName}";
+        var relativePath = $"/uploads/profile/{fileName}";
+        // Build full URL so mobile apps can display the image (they check for http prefix)
+        var httpContext = _httpContextAccessor.HttpContext;
+        var fullUrl = httpContext != null
+            ? $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{relativePath}"
+            : relativePath;
         var profile = await _db.MemberProfiles.FindAsync(pid);
-        if (profile != null) { profile.ProfilePic = photoUrl; profile.UpdatedAt = DateTime.UtcNow; await _db.SaveChangesAsync(); }
-        return new { status = "0", message = "success", ProfileImage = photoUrl };
+        if (profile != null) { profile.ProfilePic = fullUrl; profile.UpdatedAt = DateTime.UtcNow; await _db.SaveChangesAsync(); }
+        return new { status = "0", message = "success", ProfileImage = fullUrl, UploadImageResult = new { status = "0", Imagepath = fullUrl } };
     }
 
     public async Task<object> GetBodList(BodListRequest request)
@@ -304,7 +314,7 @@ public class MemberService : IMemberService
         // Fallback to local DB
         var query = _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
-            .Where(x => x.gm.GroupId == grpId && x.mp.Designation != null && x.mp.Designation != "");
+            .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Designation != null && x.mp.Designation != "");
         if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
         var localMembers = await query.Select(x => new { masterUID = x.mp.UserId.ToString(), grpID = x.gm.GroupId.ToString(), profileID = x.mp.Id.ToString(), memberName = x.mp.MemberName, membermobile = x.mp.MemberMobile, MemberDesignation = x.mp.Designation, pic = x.mp.ProfilePic, Email = x.mp.MemberEmail }).ToListAsync();
         return new { TBGetBODResult = new { status = "0", message = "success", BODResult = localMembers } };
@@ -397,7 +407,7 @@ public class MemberService : IMemberService
         // Fallback to local DB
         var query = _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
-            .Where(x => x.gm.GroupId == 31185 && x.mp.Designation != null && x.mp.Designation != "");
+            .Where(x => x.gm.GroupId == 31185 && x.gm.IsActive && x.mp.Designation != null && x.mp.Designation != "");
         if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
         var localMembers = await query.Select(x => new { BOD_pkID = x.mp.Id, ProfileID = x.mp.Id, FK_Master_Designation_ID = 0, PhoneNo = x.mp.MemberMobile, Email = x.mp.MemberEmail, MemberName = x.mp.MemberName, masterUID = x.mp.UserId, sr_NO = 0, grpID = 31185, pic = x.mp.ProfilePic, MemberDesignation = x.mp.Designation, membermobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile }).ToListAsync();
         return new { status = "0", message = "success", Result = new { Table = localMembers } };
@@ -591,9 +601,11 @@ public class MemberService : IMemberService
         var pid = int.TryParse(request.MemProfileId, out var p) ? p : 0;
         var profile = await _db.MemberProfiles.FindAsync(pid);
         if (profile == null) return new UpdateResponse { status = "1", message = "Not found" };
-        if (request.mobile_num_hide != null) profile.MobileNumHide = request.mobile_num_hide;
-        if (request.secondary_num_hide != null) profile.SecondaryNumHide = request.secondary_num_hide;
-        if (request.email_hide != null) profile.EmailHide = request.email_hide;
+        if (request.mobile_num_hide != null) { profile.HideWhatsnum = request.mobile_num_hide; profile.MobileNumHide = request.mobile_num_hide; }
+        if (request.secondary_num_hide != null) { profile.HideNum = request.secondary_num_hide; profile.SecondaryNumHide = request.secondary_num_hide; }
+        if (request.email_hide != null) { profile.HideMail = request.email_hide; profile.EmailHide = request.email_hide; }
+        if (request.DOB != null) profile.Dob = request.DOB;
+        if (request.DOA != null) profile.Doa = request.DOA;
         if (request.company_name != null) profile.CompanyName = request.company_name;
         profile.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();

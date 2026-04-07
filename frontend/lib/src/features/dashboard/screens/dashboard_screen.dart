@@ -581,10 +581,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     switch (index) {
       case 0:
         // iOS: PastPresidentListViewController — PastPresidents/getPastPresidentsList
-        // Android: uses GROUP_ID_1 (grpid1 = national/org admin group), NOT GROUP_ID_0
-        debugPrint('DEBUG Past Presidents: orgGroupId=${LocalStorage.instance.orgGroupId}, groupId=${LocalStorage.instance.groupId}, authGroupId=${LocalStorage.instance.authGroupId}');
+        // National Past Presidents always use group 31185 (National Admin),
+        // matching React web app: `const groupId = filterGroupId || '31185'`
         _pushAndCheckSession('/past-presidents', extra: {
-          'groupId': LocalStorage.instance.orgGroupId ?? LocalStorage.instance.groupId ?? '',
+          'groupId': '31185',
         });
         break;
       case 1:

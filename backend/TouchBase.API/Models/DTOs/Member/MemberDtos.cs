@@ -26,6 +26,8 @@ public class UpdateProfileRequest
     public string? memberEmailid { get; set; }
     public string? ProfilePicPath { get; set; }
     public string? ImageId { get; set; }
+    public string? dob { get; set; }
+    public string? doa { get; set; }
 }
 
 public class UpdatePersonalDetailsRequest

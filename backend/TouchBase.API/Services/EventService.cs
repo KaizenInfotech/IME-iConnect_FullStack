@@ -371,22 +371,35 @@ public class EventService : IEventService
         ev.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
-        // Send push notification to group members for new events
+        // Send push notification for new events
+        // National (not a chapter in Clubs table) → all app users; Chapter → chapter members only
+        // Flutter expects type="Event" with eventTitle, eventDate, eventDesc, eventImg, reglink, venue
         if (eventId == 0 && grpId > 0)
         {
+            var isChapter = await _db.Clubs.AnyAsync(c => c.GroupId == grpId);
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await _notificationService.SendGroupNotification(
-                        grpId, "Event",
-                        request.evntTitle ?? "New Event",
-                        request.evntDesc ?? "A new event has been created",
-                        new Dictionary<string, string>
-                        {
-                            ["eventId"] = ev.Id.ToString(),
-                            ["eventTitle"] = request.evntTitle ?? ""
-                        });
+                    var extra = new Dictionary<string, string>
+                    {
+                        ["eventId"] = ev.Id.ToString(),
+                        ["eventTitle"] = request.evntTitle ?? "",
+                        ["eventDate"] = request.evntDate ?? "",
+                        ["eventDesc"] = request.evntDesc ?? "",
+                        ["eventImg"] = request.eventImageID ?? "",
+                        ["reglink"] = request.reglink ?? "",
+                        ["venue"] = request.eventVenue ?? "",
+                        ["grpID"] = grpId.ToString()
+                    };
+                    if (!isChapter)
+                        await _notificationService.SendAllUsersNotification(
+                            "Event", request.evntTitle ?? "New Event",
+                            request.evntDesc ?? "A new event has been created", extra);
+                    else
+                        await _notificationService.SendGroupNotification(
+                            grpId, "Event", request.evntTitle ?? "New Event",
+                            request.evntDesc ?? "A new event has been created", extra);
                 }
                 catch { /* don't fail event creation if notification fails */ }
             });

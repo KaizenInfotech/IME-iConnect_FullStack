@@ -23,6 +23,7 @@ class _FindMemberScreenState extends State<FindMemberScreen> {
   final _nameController = TextEditingController();
   String _selectedGrade = '';
   String _selectedClub = '';
+  String _selectedClubId = '';
   String _selectedCategory = '';
 
   @override
@@ -47,7 +48,7 @@ class _FindMemberScreenState extends State<FindMemberScreen> {
     // iOS: "Please fill at least one field for Member Search"
     if (name.isEmpty &&
         _selectedGrade.isEmpty &&
-        _selectedClub.isEmpty &&
+        _selectedClubId.isEmpty &&
         _selectedCategory.isEmpty) {
       CommonToast.show(
           context, 'Please fill at least one field for Member Search');
@@ -57,7 +58,7 @@ class _FindMemberScreenState extends State<FindMemberScreen> {
     context.read<FindRotarianProvider>().fetchRotarianList(
           name: name,
           grade: _selectedGrade,
-          club: _selectedClub,
+          club: _selectedClubId,
           category: _selectedCategory,
         );
 
@@ -244,8 +245,16 @@ class _FindMemberScreenState extends State<FindMemberScreen> {
                           title: 'Select',
                           items: provider.clubList,
                           currentValue: _selectedClub,
-                          onSelected: (val) =>
-                              setState(() => _selectedClub = val),
+                          onSelected: (val) {
+                            final item = provider.clubList.firstWhere(
+                              (e) => e.name == val,
+                              orElse: () => DropdownItem(),
+                            );
+                            setState(() {
+                              _selectedClub = val;
+                              _selectedClubId = item.id?.toString() ?? '';
+                            });
+                          },
                         ),
                       ),
                       const SizedBox(height: 20),

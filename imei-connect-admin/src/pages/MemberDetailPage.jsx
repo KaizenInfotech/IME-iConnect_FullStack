@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
-import { getMember, updateProfile, updateAddress } from '../api/memberService';
+import { getMember, updateProfile, updateAddress, uploadProfilePhoto } from '../api/memberService';
 
 const bloodGroupOptions = ['- Select -', 'A +ve', 'A -ve', 'B +ve', 'B -ve', 'AB +ve', 'AB -ve', 'O +ve', 'O -ve'];
 
@@ -154,13 +154,26 @@ export default function MemberDetailPage() {
     setSaving(true);
     try {
       const profileId = String(member?.MemProfileId || id);
+      // Upload photo first if a new file was selected
+      let photoPath = profilePhotoPreview || '';
+      if (profilePhoto) {
+        const formData = new FormData();
+        formData.append('profile_image', profilePhoto);
+        formData.append('ProfileID', profileId);
+        formData.append('GrpID', filterGroupId || '');
+        const uploadRes = await uploadProfilePhoto(formData);
+        const uploadedUrl = uploadRes.data?.UploadImageResult?.Imagepath || uploadRes.data?.ProfileImage || '';
+        if (uploadedUrl) photoPath = uploadedUrl;
+      }
       // Update profile (name, mobile, email)
       await updateProfile({
         ProfileId: profileId,
         memberName: [form.FirstName, form.MiddleName, form.LastName].filter(Boolean).join(' ').trim(),
         memberMobile: form.Mobile,
         memberEmailid: form.Email,
-        ProfilePicPath: profilePhotoPreview || '',
+        ProfilePicPath: photoPath,
+        dob: form.BirthDate || null,
+        doa: form.AnniversaryDate || null,
       });
       // Update address and country
       await updateAddress({

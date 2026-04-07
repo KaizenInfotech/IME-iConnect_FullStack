@@ -9,6 +9,9 @@ public interface INotificationService
     /// Send push notification to all members of a group when content is created.
     Task SendGroupNotification(int groupId, string type, string title, string message, Dictionary<string, string>? extraData = null);
 
+    /// Send push notification to ALL app users (for national-level content).
+    Task SendAllUsersNotification(string type, string title, string message, Dictionary<string, string>? extraData = null);
+
     /// Send push notification to a specific user.
     Task SendUserNotification(int userId, string type, string title, string message, Dictionary<string, string>? extraData = null);
 
@@ -71,6 +74,44 @@ public class NotificationService : INotificationService
 
         // Store notification records for each user
         foreach (var userId in memberUserIds)
+        {
+            await StoreNotification(userId, type, title, message);
+        }
+    }
+
+    public async Task SendAllUsersNotification(string type, string title, string message, Dictionary<string, string>? extraData = null)
+    {
+        // Get ALL device tokens across all users
+        var devices = await _db.DeviceTokens
+            .Where(dt => dt.Token != null)
+            .Select(dt => new { dt.Token, dt.Platform, dt.UserId })
+            .ToListAsync();
+
+        if (!devices.Any()) return;
+
+        var data = new Dictionary<string, string>
+        {
+            ["type"] = type,
+            ["entityName"] = title,
+            ["Message"] = message,
+            ["groupId"] = "31185"
+        };
+
+        if (extraData != null)
+        {
+            foreach (var kv in extraData)
+                data[kv.Key] = kv.Value;
+        }
+
+        var deviceList = devices
+            .Where(d => !string.IsNullOrEmpty(d.Token))
+            .Select(d => (d.Token!, d.Platform ?? "android"));
+
+        await _fcmService.SendToMultipleDevices(deviceList, data, title, message);
+
+        // Store notification for all distinct users
+        var userIds = devices.Select(d => d.UserId).Distinct();
+        foreach (var userId in userIds)
         {
             await StoreNotification(userId, type, title, message);
         }

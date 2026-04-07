@@ -361,22 +361,92 @@ public class GroupService : IGroupService
         if (club != null)
         {
             _db.Clubs.Remove(club);
-            await _db.SaveChangesAsync();
             deleted = true;
         }
 
-        // Also try EF Groups table
+        // Cascade delete all data belonging to this group
+        await CascadeDeleteGroupData(gid);
+
+        // Delete the group record itself
         var group = await _db.Groups.FindAsync(gid);
         if (group != null)
         {
-            group.IsActive = false;
-            await _db.SaveChangesAsync();
+            _db.Groups.Remove(group);
             deleted = true;
         }
+
+        await _db.SaveChangesAsync();
 
         return deleted
             ? new { status = "0", message = "success" }
             : new { status = "1", message = "Group not found" };
+    }
+
+    /// Cascade delete all data belonging to a group.
+    private async Task CascadeDeleteGroupData(int groupId)
+    {
+        // Child tables first (foreign key dependencies)
+        // album_photos → albums
+        var albumIds = await _db.Albums.Where(a => a.GroupId == groupId).Select(a => a.Id).ToListAsync();
+        if (albumIds.Count > 0)
+        {
+            var albumPhotos = await _db.AlbumPhotos.Where(p => albumIds.Contains(p.AlbumId)).ToListAsync();
+            _db.AlbumPhotos.RemoveRange(albumPhotos);
+        }
+
+        // event child tables → events
+        var eventIds = await _db.Events.Where(e => e.GroupId == groupId).Select(e => e.Id).ToListAsync();
+        if (eventIds.Count > 0)
+        {
+            var eventResponses = await _db.EventResponses.Where(r => eventIds.Contains(r.EventId)).ToListAsync();
+            _db.EventResponses.RemoveRange(eventResponses);
+        }
+
+        // sub_group_members → sub_groups
+        var subGroupIds = await _db.SubGroups.Where(sg => sg.GroupId == groupId).Select(sg => sg.Id).ToListAsync();
+        if (subGroupIds.Count > 0)
+        {
+            var sgMembers = await _db.SubGroupMembers.Where(m => subGroupIds.Contains(m.SubGroupId)).ToListAsync();
+            _db.SubGroupMembers.RemoveRange(sgMembers);
+        }
+
+        // attendance child tables → attendance_records
+        var attendanceIds = await _db.AttendanceRecords.Where(a => a.GroupId == groupId).Select(a => a.Id).ToListAsync();
+        if (attendanceIds.Count > 0)
+        {
+            var attMembers = await _db.AttendanceMembers.Where(m => attendanceIds.Contains(m.AttendanceRecordId)).ToListAsync();
+            _db.AttendanceMembers.RemoveRange(attMembers);
+            var attVisitors = await _db.AttendanceVisitors.Where(v => attendanceIds.Contains(v.AttendanceRecordId)).ToListAsync();
+            _db.AttendanceVisitors.RemoveRange(attVisitors);
+        }
+
+        // document_read_statuses → documents
+        var docIds = await _db.Documents.Where(d => d.GroupId == groupId).Select(d => d.Id).ToListAsync();
+        if (docIds.Count > 0)
+        {
+            var docStatuses = await _db.DocumentReadStatuses.Where(s => docIds.Contains(s.DocumentId)).ToListAsync();
+            _db.DocumentReadStatuses.RemoveRange(docStatuses);
+        }
+
+        // Now delete parent tables
+        _db.Albums.RemoveRange(await _db.Albums.Where(a => a.GroupId == groupId).ToListAsync());
+        _db.Announcements.RemoveRange(await _db.Announcements.Where(a => a.GroupId == groupId).ToListAsync());
+        _db.AttendanceRecords.RemoveRange(await _db.AttendanceRecords.Where(a => a.GroupId == groupId).ToListAsync());
+        _db.Banners.RemoveRange(await _db.Banners.Where(b => b.GroupId == groupId).ToListAsync());
+        _db.Documents.RemoveRange(await _db.Documents.Where(d => d.GroupId == groupId).ToListAsync());
+        _db.Ebulletins.RemoveRange(await _db.Ebulletins.Where(e => e.GroupId == groupId).ToListAsync());
+        _db.Events.RemoveRange(await _db.Events.Where(e => e.GroupId == groupId).ToListAsync());
+        _db.Feedbacks.RemoveRange(await _db.Feedbacks.Where(f => f.GroupId == groupId).ToListAsync());
+        _db.GroupMembers.RemoveRange(await _db.GroupMembers.Where(gm => gm.GroupId == groupId).ToListAsync());
+        _db.GroupModules.RemoveRange(await _db.GroupModules.Where(gm => gm.GroupId == groupId).ToListAsync());
+        _db.GroupSettings.RemoveRange(await _db.GroupSettings.Where(gs => gs.GroupId == groupId).ToListAsync());
+        _db.LeaderboardEntries.RemoveRange(await _db.LeaderboardEntries.Where(l => l.GroupId == groupId).ToListAsync());
+        _db.MerItems.RemoveRange(await _db.MerItems.Where(m => m.GroupId == groupId).ToListAsync());
+        _db.PastPresidents.RemoveRange(await _db.PastPresidents.Where(p => p.GroupId == groupId).ToListAsync());
+        _db.Popups.RemoveRange(await _db.Popups.Where(p => p.GroupId == groupId).ToListAsync());
+        _db.ServiceDirectoryEntries.RemoveRange(await _db.ServiceDirectoryEntries.Where(s => s.GroupId == groupId).ToListAsync());
+        _db.SubGroups.RemoveRange(await _db.SubGroups.Where(sg => sg.GroupId == groupId).ToListAsync());
+        _db.WebLinks.RemoveRange(await _db.WebLinks.Where(w => w.GroupId == groupId).ToListAsync());
     }
 
     public async Task<object> DeleteSubGroup(string subGroupId)
@@ -394,11 +464,12 @@ public class GroupService : IGroupService
 
 // ═══════════════════════════════════════════════════════════════
 // AnnouncementService
-// ═══════════════════════════════════════════════════════════════
+// ═════════════════════════��═════════════════════════════════════
 public class AnnouncementService : IAnnouncementService
 {
     private readonly AppDbContext _db;
-    public AnnouncementService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; }
+    private readonly INotificationService _notificationService;
+    public AnnouncementService(AppDbContext db, IHttpClientFactory httpClientFactory, INotificationService notificationService) { _db = db; _notificationService = notificationService; }
 
     public async Task<object> GetAnnouncementList(AnnouncementListRequest request)
     {
@@ -466,6 +537,40 @@ public class AnnouncementService : IAnnouncementService
         ann.InputIds = request.inputIDs; ann.RepeatDates = request.AnnouncementRepeatDates;
         ann.IsSubGrpAdmin = request.isSubGrpAdmin;
         await _db.SaveChangesAsync();
+
+        // Send push notification for new announcements
+        // National (not a chapter in Clubs table) → all app users; Chapter → chapter members only
+        // Flutter expects type="ann" with ann_title, Ann_date, ann_desc, ann_lnk, ann_img
+        if (annId == 0 && grpId > 0)
+        {
+            var isChapter = await _db.Clubs.AnyAsync(c => c.GroupId == grpId);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var extra = new Dictionary<string, string>
+                    {
+                        ["announId"] = ann.Id.ToString(),
+                        ["ann_title"] = request.announTitle ?? "",
+                        ["Ann_date"] = request.publishDate ?? "",
+                        ["ann_desc"] = request.announceDEsc ?? "",
+                        ["ann_lnk"] = request.reglink ?? "",
+                        ["ann_img"] = request.announImg ?? "",
+                        ["grpID"] = grpId.ToString()
+                    };
+                    if (!isChapter)
+                        await _notificationService.SendAllUsersNotification(
+                            "ann", request.announTitle ?? "New Announcement",
+                            request.announceDEsc ?? "A new announcement has been posted", extra);
+                    else
+                        await _notificationService.SendGroupNotification(
+                            grpId, "ann", request.announTitle ?? "New Announcement",
+                            request.announceDEsc ?? "A new announcement has been posted", extra);
+                }
+                catch { /* don't fail announcement creation if notification fails */ }
+            });
+        }
+
         return new { status = "0", message = "success" };
     }
 
@@ -1007,21 +1112,21 @@ public class CelebrationsService : ICelebrationsService
         var birthdays = await _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Join(_db.Users, x => x.mp.UserId, u => u.Id, (x, u) => new { x.mp, x.gm, u })
-            .Where(x => x.gm.GroupId == grpId && x.mp.Dob != null && x.mp.Dob.EndsWith(dateSuffix))
-            .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.u.FirstName ?? x.mp.MemberName, memberMobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile, relation = "", msg = "BirthDay" }).ToListAsync();
+            .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Dob != null && x.mp.Dob.EndsWith(dateSuffix))
+            .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.u.FirstName ?? x.mp.MemberName, memberMobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile, memberEmail = x.mp.MemberEmail ?? "", relation = "", msg = "BirthDay", hide_whatsnum = x.mp.HideWhatsnum ?? "0", hide_num = x.mp.HideNum ?? "0", hide_mail = x.mp.HideMail ?? "0" }).ToListAsync();
 
         var anniversaries = await _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Join(_db.Users, x => x.mp.UserId, u => u.Id, (x, u) => new { x.mp, x.gm, u })
-            .Where(x => x.gm.GroupId == grpId && x.mp.Doa != null && x.mp.Doa.EndsWith(dateSuffix))
-            .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.u.FirstName ?? x.mp.MemberName, memberMobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile, relation = "", msg = "Anniversary" }).ToListAsync();
+            .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Doa != null && x.mp.Doa.EndsWith(dateSuffix))
+            .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.u.FirstName ?? x.mp.MemberName, memberMobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile, memberEmail = x.mp.MemberEmail ?? "", relation = "", msg = "Anniversary", hide_whatsnum = x.mp.HideWhatsnum ?? "0", hide_num = x.mp.HideNum ?? "0", hide_mail = x.mp.HideMail ?? "0" }).ToListAsync();
 
         // Family birthdays
         var familyBdays = await _db.FamilyMembers
             .Join(_db.GroupMembers, fm => fm.MemberProfileId, gm => gm.MemberProfileId, (fm, gm) => new { fm, gm })
-            .Where(x => x.gm.GroupId == grpId && x.fm.Dob != null && x.fm.Dob.EndsWith(dateSuffix))
+            .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.fm.Dob != null && x.fm.Dob.EndsWith(dateSuffix))
             .Join(_db.MemberProfiles, x => x.fm.MemberProfileId, mp => mp.Id, (x, mp) => new { x.fm, x.gm, mp })
-            .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.fm.MemberName, memberMobile = "", relation = x.fm.Relationship + " of " + x.mp.MemberName, msg = "BirthDay" }).ToListAsync();
+            .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.fm.MemberName, memberMobile = "", memberEmail = "", relation = x.fm.Relationship + " of " + x.mp.MemberName, msg = "BirthDay", hide_whatsnum = "0", hide_num = "0", hide_mail = "0" }).ToListAsync();
 
         var result = new List<object>();
         result.AddRange(birthdays);
@@ -1061,7 +1166,10 @@ public class CelebrationsService : ICelebrationsService
                     type = "Birthday",
                     MemberProfileId = (string?)null,
                     EventVenue = (string?)null,
-                    RegLink = (string?)null
+                    RegLink = (string?)null,
+                    hide_whatsnum = x.mp.HideWhatsnum ?? "0",
+                    hide_num = x.mp.HideNum ?? "0",
+                    hide_mail = x.mp.HideMail ?? "0"
                 }).ToListAsync();
             events.AddRange(bdays);
         }
@@ -1085,7 +1193,10 @@ public class CelebrationsService : ICelebrationsService
                     type = "Anniversary",
                     MemberProfileId = (string?)null,
                     EventVenue = (string?)null,
-                    RegLink = (string?)null
+                    RegLink = (string?)null,
+                    hide_whatsnum = x.mp.HideWhatsnum ?? "0",
+                    hide_num = x.mp.HideNum ?? "0",
+                    hide_mail = x.mp.HideMail ?? "0"
                 }).ToListAsync();
             events.AddRange(annis);
         }
@@ -1188,10 +1299,11 @@ public class FindClubService : IFindClubService
         if (!string.IsNullOrEmpty(request.keyword)) query = query.Where(c => c.ClubName != null && c.ClubName.Contains(request.keyword));
         if (!string.IsNullOrEmpty(request.country)) query = query.Where(c => c.Country != null && c.Country.Contains(request.country));
         var clubs = await query.Select(c => new { GroupId = c.GroupId, group_name = c.ClubName, address = c.Address, city = c.City, State = c.State, country_name = c.Country, Meeting_Day = c.MeetingDay, meeting_from_time = c.MeetingTime, member_name = c.PresidentName, member_name0 = c.SecretaryName }).ToListAsync();
-        // Table1: committee members per branch
+        // Table1: committee members per branch (only active members in active groups)
         var committees = await _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
-            .Where(x => x.mp.Designation != null && x.mp.Designation != "")
+            .Join(_db.Groups, x => x.gm.GroupId, g => g.Id, (x, g) => new { x.mp, x.gm, g })
+            .Where(x => x.g.IsActive && x.gm.IsActive && x.mp.Designation != null && x.mp.Designation != "")
             .Select(x => new { GroupId = x.gm.GroupId, member_name = x.mp.MemberName, Designation = x.mp.Designation, mobile_no = x.mp.MemberMobile, hide_num = x.mp.HideNum, email_id = x.mp.MemberEmail, hide_mail = x.mp.HideMail, member_name0 = x.mp.MemberName, member_name1 = x.mp.MemberName, Designation0 = x.mp.Designation, Designation1 = x.mp.Designation, mobile_no0 = x.mp.MemberMobile, mobile_no1 = x.mp.MemberMobile, hide_num0 = x.mp.HideNum, hide_num1 = x.mp.HideNum, email_id0 = x.mp.MemberEmail, email_id1 = x.mp.MemberEmail, hide_mail0 = x.mp.HideMail, hide_mail1 = x.mp.HideMail }).ToListAsync();
         return new { TBGetClubResult = new { status = "0", message = "success", ClubResult = new { Table = clubs, Table1 = committees } } };
     }
@@ -1234,7 +1346,7 @@ public class FindRotarianService : IFindRotarianService
         var query = _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Join(_db.Groups, x => x.gm.GroupId, g => g.Id, (x, g) => new { x.mp, x.gm, g })
-            .Where(x => x.gm.GroupId != 31185);
+            .Where(x => x.g.IsActive && x.gm.IsActive && x.gm.GroupId != 31185);
 
         if (!string.IsNullOrEmpty(request.name)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.name));
         if (!string.IsNullOrEmpty(request.Grade)) query = query.Where(x => x.mp.MembershipGrade == request.Grade);
@@ -1281,17 +1393,15 @@ public class FindRotarianService : IFindRotarianService
     public async Task<object> GetMemberGradeList()
     {
         var grades = await _db.MemberProfiles.Where(mp => mp.MembershipGrade != null && mp.MembershipGrade != "")
-            .Select(mp => mp.MembershipGrade).Distinct()
-            .Select(g => new { id = 0, name = g }).ToListAsync();
-        // Assign IDs
+            .Select(mp => mp.MembershipGrade).Distinct().ToListAsync();
         var result = grades.Select((g, i) => new { id = i + 1, name = g }).ToList();
         return new { status = "0", message = "success", str = new { Table = result } };
     }
     public async Task<object> GetClubList()
     {
-        var clubs = await _db.Groups.Where(g => g.Id != 31185 && g.Id != 2765)
-            .OrderBy(g => g.GrpName)
-            .Select(g => new { id = g.Id, name = g.GrpName }).ToListAsync();
+        var clubs = await _db.Clubs
+            .OrderBy(c => c.ClubName)
+            .Select(c => new { id = c.GroupId, name = c.ClubName }).ToListAsync();
         return new { status = "0", message = "success", str = new { Table = clubs } };
     }
 }
@@ -1305,7 +1415,7 @@ public class DistrictService : IDistrictService
         var grpId = int.TryParse(request.grpID, out var gid) ? gid : 0;
         var page = int.TryParse(request.pageNo, out var p) ? p : 1;
         var size = int.TryParse(request.recordCount, out var s) ? s : 25;
-        var query = _db.GroupMembers.Include(gm => gm.MemberProfile).Include(gm => gm.Group).Where(gm => gm.GroupId == grpId);
+        var query = _db.GroupMembers.Include(gm => gm.MemberProfile).Include(gm => gm.Group).Where(gm => gm.GroupId == grpId && gm.IsActive);
         if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(gm => gm.MemberProfile.MemberName!.Contains(request.searchText));
         var total = await query.CountAsync();
         var members = await query.Skip((page - 1) * size).Take(size)

@@ -144,11 +144,21 @@ public class AuthService : IAuthService
 
         var token = GenerateJwtToken(user);
         var profile = user.MemberProfiles.FirstOrDefault();
-        var grpMember = profile?.GroupMemberships.FirstOrDefault();
+
+        // Only consider memberships in active groups
+        var allMemberships = user.MemberProfiles
+            .SelectMany(mp => mp.GroupMemberships)
+            .Where(gm => gm.Group != null && gm.Group.IsActive)
+            .ToList();
+
+        // If user has no active group memberships, return error
+        if (allMemberships.Count == 0)
+            return new LoginResponse { status = "1", message = "You are not registered in any active chapter. Please contact your chapter admin." };
+
+        var grpMember = allMemberships.FirstOrDefault();
 
         // Find the national/org admin group (grpid1) from local DB
         string? grpid1 = null;
-        var allMemberships = user.MemberProfiles.SelectMany(mp => mp.GroupMemberships).ToList();
         var nationalGroup = allMemberships.FirstOrDefault(gm => gm.GroupId == 31185);
         if (nationalGroup != null)
             grpid1 = nationalGroup.GroupId.ToString();
@@ -159,16 +169,16 @@ public class AuthService : IAuthService
         var loginTable = new LoginTable
         {
             masterUID = user.Id,
-            grpid0 = grpMember?.GroupId ?? 0,
-            grpid1 = grpid1 ?? grpMember?.GroupId.ToString(),
-            GrpName = grpMember?.Group?.GrpName,
+            grpid0 = grpMember.GroupId,
+            grpid1 = grpid1 ?? grpMember.GroupId.ToString(),
+            GrpName = grpMember.Group?.GrpName,
             FirstName = user.FirstName,
             MiddleName = user.MiddleName,
             LastName = user.LastName,
             IMEI_Mem_Id = user.ImeiMemId,
             memberProfileId = profile?.Id ?? 0,
             profileImage = user.ProfileImage ?? profile?.ProfilePic,
-            groupMasterID = grpMember?.Id ?? 0
+            groupMasterID = grpMember.Id
         };
 
         return new LoginResponse
