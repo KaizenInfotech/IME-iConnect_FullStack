@@ -235,12 +235,11 @@ export default function MembersPage() {
                     {/* Photo */}
                     <td style={{ padding: '8px 8px', textAlign: 'center' }}>
                       {profilePic ? (
-                        <img src={profilePic} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
-                      ) : (
-                        <div style={{ width: 36, height: 36, borderRadius: '50%', backgroundColor: '#e0e0e0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px' }}>
-                          {(name || '?').charAt(0).toUpperCase()}
-                        </div>
-                      )}
+                        <img src={profilePic} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'inline-flex'; }} />
+                      ) : null}
+                      <div style={{ width: 36, height: 36, borderRadius: '50%', backgroundColor: '#e8eaf6', display: profilePic ? 'none' : 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a297d" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      </div>
                     </td>
                     {/* Membership ID */}
                     <td style={{ padding: '8px 12px', color: '#555' }}>{membershipId}</td>
