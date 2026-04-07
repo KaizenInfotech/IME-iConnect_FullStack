@@ -12,14 +12,14 @@ public class MemberService : IMemberService
 {
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IConfiguration _configuration;
     private const int PageSize = 25;
 
-    public MemberService(AppDbContext db, IHttpClientFactory httpClientFactory, IHttpContextAccessor httpContextAccessor)
+    public MemberService(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
         _db = db;
         _httpClientFactory = httpClientFactory;
-        _httpContextAccessor = httpContextAccessor;
+        _configuration = configuration;
     }
 
     public async Task<DirectoryListResponse> GetDirectoryList(DirectoryListRequest request)
@@ -142,7 +142,11 @@ public class MemberService : IMemberService
                 profile.User.UpdatedAt = DateTime.UtcNow;
             }
         }
-        if (request.memberMobile != null) profile.MemberMobile = request.memberMobile;
+        if (request.memberMobile != null)
+        {
+            profile.MemberMobile = request.memberMobile;
+            if (profile.User != null) profile.User.MobileNo = request.memberMobile;
+        }
         if (request.memberEmailid != null)
         {
             profile.MemberEmail = request.memberEmailid;
@@ -267,10 +271,10 @@ public class MemberService : IMemberService
         await using var stream = new FileStream(Path.Combine(path, fileName), FileMode.Create);
         await file.CopyToAsync(stream);
         var relativePath = $"/uploads/profile/{fileName}";
-        // Build full URL so mobile apps can display the image (they check for http prefix)
-        var httpContext = _httpContextAccessor.HttpContext;
-        var fullUrl = httpContext != null
-            ? $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{relativePath}"
+        // Build full URL using configured base URL (includes /V2 path prefix)
+        var appBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
+        var fullUrl = !string.IsNullOrEmpty(appBaseUrl)
+            ? $"{appBaseUrl}{relativePath}"
             : relativePath;
         var profile = await _db.MemberProfiles.FindAsync(pid);
         if (profile != null) { profile.ProfilePic = fullUrl; profile.UpdatedAt = DateTime.UtcNow; await _db.SaveChangesAsync(); }
