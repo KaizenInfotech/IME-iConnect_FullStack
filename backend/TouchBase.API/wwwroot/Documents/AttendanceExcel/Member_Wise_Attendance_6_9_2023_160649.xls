@@ -1,0 +1,20 @@
+<TABLE border=1 ID="TableH2">
+<TD colspan="3"  style="background-color:#AAF6D4" align="center" color="#FFFFFF"><h2><b> Mumbai Branch</b></h2></TD><TR>
+<TD colspan="3" style="background-color:#1d80cf" align="center" color="#FFFFFF"><h2><b>Attendance_Report_Member</b></h2></TD></TR>
+<TR>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>member_name</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Wed, 06 Sep 2023 13:10:00</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Total_Present</b></TD>
+</TR>
+<TR>
+<TD style="mso-number-format:'\@';">Satish</TD>
+<TD style="mso-number-format:'\@';">Yes</TD>
+<TD style="mso-number-format:'\@';">1</TD>
+</TR>
+<TR>
+<TD></TD>
+<TD></TD>
+<TD></TD>
+</TR>
+</TABLE>
+

@@ -1,0 +1,86 @@
+<TABLE border=1 ID="TableH2">
+<TD colspan="4"  style="background-color:#AAF6D4" align="center" color="#FFFFFF"><h2><b> Testing</b></h2></TD><TR>
+<TD colspan="4" style="background-color:#1d80cf" align="center" color="#FFFFFF"><h2><b>Attendance_Report_Visitors (Non-Rotarians) </b></h2></TD></TR>
+<TR>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>VisitorsName</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Rotarian_whohas_Brought</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Thu, 08 Jan 2026 17:20:00</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Mon, 02 Feb 2026 19:15:00</b></TD>
+</TR>
+<TR>
+<TD style="mso-number-format:'\@';">Sam</TD>
+<TD style="mso-number-format:'\@';">Test</TD>
+<TD style="mso-number-format:'\@';">Yes</TD>
+<TD style="mso-number-format:'\@';">No</TD>
+</TR>
+<TR>
+<TD style="mso-number-format:'\@';">Tina</TD>
+<TD style="mso-number-format:'\@';">Test</TD>
+<TD style="mso-number-format:'\@';">Yes</TD>
+<TD style="mso-number-format:'\@';">No</TD>
+</TR>
+<TR>
+<TD></TD>
+<TD></TD>
+<TD></TD>
+<TD></TD>
+</TR>
+<TR>
+<TD colspan="4" style="background-color:#1d80cf" align="center" color="#FFFFFF"><h2><b>Attendance_Report_Rotarians (Other Clubs)</b></h2></TD></TR>
+<TR>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>RotarianName</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>ClubName</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Thu, 08 Jan 2026 17:20:00</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Mon, 02 Feb 2026 19:15:00</b></TD>
+</TR>
+<TR>
+<TD style="mso-number-format:'\@';">Girish Nair</TD>
+<TD style="mso-number-format:'\@';">ROTARY BANGALORE JEEVAN BHEEMA NAGAR</TD>
+<TD style="mso-number-format:'\@';">Yes</TD>
+<TD style="mso-number-format:'\@';">No</TD>
+</TR>
+<TR>
+<TD></TD>
+<TD></TD>
+<TD></TD>
+<TD></TD>
+</TR>
+<TR>
+<TD colspan="5" style="background-color:#1d80cf" align="center" color="#FFFFFF"><h2><b>Attendance_Report_District Delegates</b></h2></TD></TR>
+<TR>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>RotarianName</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>DistrictDesignation</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>ClubName</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Thu, 08 Jan 2026 17:20:00</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Mon, 02 Feb 2026 19:15:00</b></TD>
+</TR>
+<TR>
+<TD style="mso-number-format:'\@';">Suresh Hari</TD>
+<TD style="mso-number-format:'\@';">Governer</TD>
+<TD style="mso-number-format:'\@';">District 3190</TD>
+<TD style="mso-number-format:'\@';">Yes</TD>
+<TD style="mso-number-format:'\@';">No</TD>
+</TR>
+<TR>
+<TD style="mso-number-format:'\@';">Naveen Cariappa</TD>
+<TD style="mso-number-format:'\@';">Assistant Governor</TD>
+<TD style="mso-number-format:'\@';">Downtown</TD>
+<TD style="mso-number-format:'\@';">Yes</TD>
+<TD style="mso-number-format:'\@';">No</TD>
+</TR>
+<TR>
+<TD style="mso-number-format:'\@';">Karthikeya Reddy</TD>
+<TD style="mso-number-format:'\@';">Secretary</TD>
+<TD style="mso-number-format:'\@';">Indiranagra</TD>
+<TD style="mso-number-format:'\@';">Yes</TD>
+<TD style="mso-number-format:'\@';">No</TD>
+</TR>
+<TR>
+<TD></TD>
+<TD></TD>
+<TD></TD>
+<TD></TD>
+<TD></TD>
+</TR>
+</TABLE>
+

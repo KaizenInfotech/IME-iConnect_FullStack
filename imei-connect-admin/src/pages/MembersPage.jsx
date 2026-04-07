@@ -200,6 +200,7 @@ export default function MembersPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
           <thead>
             <tr style={{ backgroundColor: '#1a297d', color: '#fff' }}>
+              <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 'normal', width: '50px' }}>Photo</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal' }}>Membership ID</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal' }}>Name</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal' }}>Chapter / Branch Name</th>
@@ -212,7 +213,7 @@ export default function MembersPage() {
           </thead>
           <tbody>
             {paginatedMembers.length === 0 ? (
-              <tr><td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: '#999' }}>No members found.</td></tr>
+              <tr><td colSpan={9} style={{ padding: '30px', textAlign: 'center', color: '#999' }}>No members found.</td></tr>
             ) : (
               paginatedMembers.map((m, idx) => {
                 const mId = m.masterID || m.profileID || m.Id || m.id;
@@ -221,6 +222,7 @@ export default function MembersPage() {
                 const mobile = m.memberMobile || m.MemberMobile || '';
                 const email = m.memberEmail || m.MemberEmail || '';
                 const membershipId = m.member_IMEI_id || m.MembershipId || m.membershipId || '';
+                const profilePic = m.profilePic || m.ProfilePic || '';
 
                 return (
                   <tr
@@ -230,6 +232,16 @@ export default function MembersPage() {
                       borderBottom: '1px solid #eee',
                     }}
                   >
+                    {/* Photo */}
+                    <td style={{ padding: '8px 8px', textAlign: 'center' }}>
+                      {profilePic ? (
+                        <img src={profilePic} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{ width: 36, height: 36, borderRadius: '50%', backgroundColor: '#e0e0e0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px' }}>
+                          {(name || '?').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                    </td>
                     {/* Membership ID */}
                     <td style={{ padding: '8px 12px', color: '#555' }}>{membershipId}</td>
                     {/* Name */}

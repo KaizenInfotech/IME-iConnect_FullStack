@@ -1,0 +1,20 @@
+<TABLE border=1 ID="TableH2">
+<TD colspan="3"  style="background-color:#AAF6D4" align="center" color="#FFFFFF"><h2><b> Tester_Kaizen_Thane</b></h2></TD><TR>
+<TD colspan="3" style="background-color:#1d80cf" align="center" color="#FFFFFF"><h2><b>Attendance_Report_Visitors (Non-Rotarians) </b></h2></TD></TR>
+<TR>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>VisitorsName</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Rotarian_whohas_Brought</b></TD>
+<TD style="background-color:#CDC8C4" color="#FFFFFF"><b>Thu, 23 Mar 2023 11:10:00</b></TD>
+</TR>
+<TR>
+<TD style="mso-number-format:'\@';">Satish</TD>
+<TD style="mso-number-format:'\@';">Khushboo</TD>
+<TD style="mso-number-format:'\@';">Yes</TD>
+</TR>
+<TR>
+<TD></TD>
+<TD></TD>
+<TD></TD>
+</TR>
+</TABLE>
+
