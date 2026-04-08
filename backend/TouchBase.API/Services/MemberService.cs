@@ -776,23 +776,43 @@ public class MemberService : IMemberService
     public async Task<object> AddMember(WebAddMemberRequest request)
     {
         // Check if mobile number already exists
-        var existingUser = await _db.Users.FirstOrDefaultAsync(u => u.MobileNo == request.mobileNo);
-        if (existingUser != null)
-            return new { status = "1", message = "Mobile number already exists" };
+        var existingUser = await _db.Users
+            .Include(u => u.MemberProfiles)
+            .FirstOrDefaultAsync(u => u.MobileNo == request.mobileNo);
 
-        // Create user
-        var user = new User
+        User user;
+        if (existingUser != null)
         {
-            MobileNo = request.mobileNo,
-            CountryCode = request.countryCode ?? "91",
-            FirstName = request.firstName,
-            MiddleName = request.middleName,
-            LastName = request.lastName,
-            Email = request.emailID,
-            IsRegistered = true,
-        };
-        _db.Users.Add(user);
-        await _db.SaveChangesAsync();
+            // If user still has member profiles, reject as duplicate
+            if (existingUser.MemberProfiles.Any())
+                return new { status = "1", message = "Mobile number already exists" };
+
+            // User exists but profile was deleted — reuse the user record
+            existingUser.FirstName = request.firstName;
+            existingUser.MiddleName = request.middleName;
+            existingUser.LastName = request.lastName;
+            existingUser.Email = request.emailID;
+            existingUser.CountryCode = request.countryCode ?? "91";
+            existingUser.IsRegistered = true;
+            user = existingUser;
+            await _db.SaveChangesAsync();
+        }
+        else
+        {
+            // Create new user
+            user = new User
+            {
+                MobileNo = request.mobileNo,
+                CountryCode = request.countryCode ?? "91",
+                FirstName = request.firstName,
+                MiddleName = request.middleName,
+                LastName = request.lastName,
+                Email = request.emailID,
+                IsRegistered = true,
+            };
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync();
+        }
 
         // Create member profile
         var fullName = new[] { request.firstName, request.middleName, request.lastName }
