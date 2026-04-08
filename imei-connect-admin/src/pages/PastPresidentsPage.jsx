@@ -69,7 +69,7 @@ export default function PastPresidentsPage() {
     setEditing(item);
     setForm({
       MemberName: displayName,
-      Designation: item.Designation || item.designation || 'Past President',
+      Designation: item.Designation || item.designation || (filterGroupId ? 'Past Chairman' : 'Past President'),
       PhotoFile: null,
     });
     setPhotoPreview(item.PhotoPath || item.photoPath || null);
@@ -78,7 +78,7 @@ export default function PastPresidentsPage() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ MemberName: '', Designation: 'Past President', PhotoFile: null });
+    setForm({ MemberName: '', Designation: filterGroupId ? 'Past Chairman' : 'Past President', PhotoFile: null });
     setPhotoPreview(null);
     setShowModal(true);
   };
@@ -205,7 +205,7 @@ export default function PastPresidentsPage() {
           <div style={{ position: 'relative', backgroundColor: '#fff', borderRadius: '6px', width: '100%', maxWidth: '480px', margin: '0 15px', zIndex: 1051 }}>
             {/* Header */}
             <div style={{ padding: '15px 20px', borderBottom: '1px solid #e5e5e5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: '#333' }}>Past President Details</h4>
+              <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: '#333' }}>{filterGroupId ? 'Past Chairman Details' : 'Past President Details'}</h4>
               <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: '#000', lineHeight: 1 }}>&times;</button>
             </div>
             {/* Body */}

@@ -32,7 +32,6 @@ class ClubEventsListScreen extends StatefulWidget {
 
 class _ClubEventsListScreenState extends State<ClubEventsListScreen> {
   final _searchController = TextEditingController();
-  bool _isSearching = false;
 
   String get _profileId =>
       widget.profileId ??
@@ -84,55 +83,55 @@ class _ClubEventsListScreenState extends State<ClubEventsListScreen> {
       backgroundColor: AppColors.scaffoldBackground,
       appBar: CommonAppBar(
         title: widget.moduleName ?? 'Club Events',
-        actions: [
-          IconButton(
-            icon: Icon(
-              _isSearching ? Icons.close : Icons.search,
-              color: AppColors.textOnPrimary,
-            ),
-            onPressed: () {
-              setState(() {
-                _isSearching = !_isSearching;
-                if (!_isSearching) {
-                  _searchController.clear();
-                  _loadEvents();
-                }
-              });
-            },
-          ),
-        ],
       ),
       body: Column(
         children: [
-          // iOS: searchBar
-          if (_isSearching)
-            Container(
-              color: AppColors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Search events...',
-                  hintStyle: const TextStyle(
-                    fontFamily: AppTextStyles.fontFamily,
-                    fontSize: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                  prefixIcon:
-                      const Icon(Icons.search, color: AppColors.textSecondary),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: AppColors.border),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          // Search bar (always visible, matching announcements style)
+          Container(
+            color: AppColors.white,
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {});
+                if (value.isEmpty) _loadEvents();
+              },
+              onSubmitted: _searchEvents,
+              style: const TextStyle(
+                fontFamily: AppTextStyles.fontFamily,
+                fontSize: 14,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Search events...',
+                hintStyle: const TextStyle(
+                  fontFamily: AppTextStyles.fontFamily,
+                  fontSize: 14,
+                  color: AppColors.grayMedium,
                 ),
-                onSubmitted: _searchEvents,
-                onChanged: (value) {
-                  if (value.isEmpty) _loadEvents();
-                },
+                prefixIcon:
+                    const Icon(Icons.search, color: AppColors.grayMedium),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear,
+                            color: AppColors.grayMedium),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {});
+                          _loadEvents();
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: AppColors.backgroundGray,
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
               ),
             ),
+          ),
           // Events list
           Expanded(
             child: Consumer<EventsProvider>(
@@ -236,22 +235,24 @@ class _ClubEventsListScreenState extends State<ClubEventsListScreen> {
                                     ),
                                   ],
                                 ),
-                              const SizedBox(height: 6),
-                              // iOS: goingCount, maybeCount, notgoingCount
-                              Row(
-                                children: [
-                                  _rsvpChip('Going',
-                                      event.goingCount ?? '0', AppColors.green),
-                                  const SizedBox(width: 8),
-                                  _rsvpChip('Maybe',
-                                      event.maybeCount ?? '0', AppColors.orange),
-                                  const SizedBox(width: 8),
-                                  _rsvpChip(
-                                      'Not Going',
-                                      event.notgoingCount ?? '0',
-                                      AppColors.systemRed),
-                                ],
-                              ),
+                              // RSVP chips only shown for non-past events
+                              if (widget.moduleName != 'Past Events') ...[
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    _rsvpChip('Going',
+                                        event.goingCount ?? '0', AppColors.green),
+                                    const SizedBox(width: 8),
+                                    _rsvpChip('Maybe',
+                                        event.maybeCount ?? '0', AppColors.orange),
+                                    const SizedBox(width: 8),
+                                    _rsvpChip(
+                                        'Not Going',
+                                        event.notgoingCount ?? '0',
+                                        AppColors.systemRed),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),

@@ -14,9 +14,10 @@ public class EventService : IEventService
     private readonly AppDbContext _db;
     private readonly INotificationService _notificationService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IConfiguration _configuration;
     private const int PageSize = 25;
     private const string OldApiBase = "https://api.imeiconnect.com/V2/api";
-    public EventService(AppDbContext db, INotificationService notificationService, IHttpClientFactory httpClientFactory) { _db = db; _notificationService = notificationService; _httpClientFactory = httpClientFactory; }
+    public EventService(AppDbContext db, INotificationService notificationService, IHttpClientFactory httpClientFactory, IConfiguration configuration) { _db = db; _notificationService = notificationService; _httpClientFactory = httpClientFactory; _configuration = configuration; }
 
     private const string ProdConnStr = "server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True;Allow User Variables=true";
 
@@ -32,6 +33,8 @@ public class EventService : IEventService
             using var cmd = conn.CreateCommand();
             var sql = @"SELECT e.pk_event_master_id as eventID, e.event_img as eventImg, e.event_title as eventTitle,
                 DATE_FORMAT(e.event_date, '%d-%b-%Y %H:%i:%s') as eventDateTime,
+                DATE_FORMAT(e.publish_Date, '%d-%m-%Y %H:%i:%s') as publishDate,
+                DATE_FORMAT(e.expiry_Date, '%d-%m-%Y %H:%i:%s') as expiryDate,
                 e.event_venue as venue, e.venue_lat as venueLat, e.venue_long as venueLon,
                 e.fk_group_master_id as grpID,
                 COALESCE(a.MembersCount, 0) as Attendance,
@@ -57,6 +60,8 @@ public class EventService : IEventService
                     eventImg = reader["eventImg"]?.ToString(),
                     eventTitle = reader["eventTitle"]?.ToString(),
                     eventDateTime = reader["eventDateTime"]?.ToString(),
+                    publishDate = reader["publishDate"] is DBNull ? null : reader["publishDate"]?.ToString(),
+                    expiryDate = reader["expiryDate"] is DBNull ? null : reader["expiryDate"]?.ToString(),
                     venue = reader["venue"]?.ToString(),
                     venueLat = reader["venueLat"]?.ToString(),
                     venueLon = reader["venueLon"]?.ToString(),
@@ -88,7 +93,8 @@ public class EventService : IEventService
             .Select(e => new EventListItemDto
             {
                 eventID = e.Id.ToString(), eventImg = e.EventImageId, eventTitle = e.EventTitle,
-                eventDateTime = e.EventDate, venue = e.EventVenue, venueLat = e.VenueLat, venueLon = e.VenueLon,
+                eventDateTime = e.EventDate, publishDate = e.PublishDate, expiryDate = e.ExpiryDate,
+                venue = e.EventVenue, venueLat = e.VenueLat, venueLon = e.VenueLon,
                 goingCount = e.Responses.Count(r => r.JoiningStatus == "Going").ToString(),
                 maybeCount = e.Responses.Count(r => r.JoiningStatus == "Maybe").ToString(),
                 notgoingCount = e.Responses.Count(r => r.JoiningStatus == "NotGoing").ToString(),
@@ -357,7 +363,19 @@ public class EventService : IEventService
         }
 
         ev.EventTitle = request.evntTitle; ev.EventDesc = request.evntDesc; ev.EventType = request.eventType;
-        ev.EventImageId = request.eventImageID; ev.EventVenue = request.eventVenue;
+        // Convert base64 image to file if needed
+        var evtImg = request.eventImageID;
+        if (!string.IsNullOrEmpty(evtImg) && evtImg.StartsWith("data:image"))
+        {
+            var base64Data = evtImg.Substring(evtImg.IndexOf(",") + 1);
+            var ext = evtImg.Contains("png") ? ".png" : ".jpg";
+            var fileName = $"{Guid.NewGuid()}{ext}";
+            var dir = Path.Combine("wwwroot", "uploads", "events"); Directory.CreateDirectory(dir);
+            await File.WriteAllBytesAsync(Path.Combine(dir, fileName), Convert.FromBase64String(base64Data));
+            var appBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
+            evtImg = $"{appBaseUrl}/uploads/events/{fileName}";
+        }
+        ev.EventImageId = evtImg; ev.EventVenue = request.eventVenue;
         ev.VenueLat = request.venueLat; ev.VenueLon = request.venueLong;
         ev.EventDate = request.evntDate; ev.PublishDate = request.publishDate;
         ev.ExpiryDate = request.expiryDate; ev.NotifyDate = request.notifyDate;

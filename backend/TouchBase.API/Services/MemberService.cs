@@ -297,21 +297,50 @@ public class MemberService : IMemberService
             cmd.Parameters.AddWithValue("@search", request.searchText ?? "");
             cmd.Parameters.AddWithValue("@year", yearFilter);
             using var reader = await cmd.ExecuteReaderAsync();
+            var profileIds = new List<int>();
+            var rawMembers = new List<Dictionary<string, string?>>();
             while (await reader.ReadAsync())
             {
-                members.Add(new
+                var pid = reader["FK_member_master_profile_id"]?.ToString();
+                if (int.TryParse(pid, out var pidInt)) profileIds.Add(pidInt);
+                rawMembers.Add(new Dictionary<string, string?>
                 {
-                    BOD_pkID = reader["BOD_pkID"]?.ToString(),
-                    profileID = reader["FK_member_master_profile_id"]?.ToString(),
-                    sr_NO = reader["sr_NO"]?.ToString(),
-                    memberName = reader["member_name"]?.ToString()?.Trim(),
-                    MemberDesignation = reader["Designation_Name"]?.ToString(),
-                    membermobile = reader["PhoneNo"]?.ToString(),
-                    Email = reader["EmailID"]?.ToString(),
+                    ["BOD_pkID"] = reader["BOD_pkID"]?.ToString(),
+                    ["profileID"] = pid,
+                    ["sr_NO"] = reader["sr_NO"]?.ToString(),
+                    ["memberName"] = reader["member_name"]?.ToString()?.Trim(),
+                    ["MemberDesignation"] = reader["Designation_Name"]?.ToString(),
+                    ["membermobile"] = reader["PhoneNo"]?.ToString(),
+                    ["Email"] = reader["EmailID"]?.ToString(),
                 });
             }
-            if (members.Count > 0)
+            if (rawMembers.Count > 0)
+            {
+                // Lookup profile photos from member_profiles
+                var pics = await _db.MemberProfiles
+                    .Where(mp => profileIds.Contains(mp.Id) && mp.ProfilePic != null && mp.ProfilePic != "")
+                    .Select(mp => new { mp.Id, mp.ProfilePic })
+                    .ToDictionaryAsync(mp => mp.Id, mp => mp.ProfilePic);
+
+                foreach (var m in rawMembers)
+                {
+                    var picUrl = "";
+                    if (int.TryParse(m["profileID"], out var mPid) && pics.ContainsKey(mPid))
+                        picUrl = pics[mPid] ?? "";
+                    members.Add(new
+                    {
+                        BOD_pkID = m["BOD_pkID"],
+                        profileID = m["profileID"],
+                        sr_NO = m["sr_NO"],
+                        memberName = m["memberName"],
+                        MemberDesignation = m["MemberDesignation"],
+                        membermobile = m["membermobile"],
+                        Email = m["Email"],
+                        pic = picUrl,
+                    });
+                }
                 return new { TBGetBODResult = new { status = "0", message = "success", BODResult = members } };
+            }
         }
         catch { }
 

@@ -140,7 +140,6 @@ import '../../features/branch_chapter/screens/branch_chapter_screen.dart';
 import '../../features/branch_chapter/screens/branch_dashboard_screen.dart';
 import '../../features/branch_chapter/screens/branch_members_screen.dart';
 import '../../features/branch_chapter/screens/executive_committee_screen.dart';
-import '../../features/branch_chapter/screens/past_events_screen.dart';
 import '../../features/branch_chapter/screens/past_event_detail_screen.dart';
 import '../../features/branch_chapter/models/past_event_result.dart';
 
@@ -674,8 +673,9 @@ class AppRouter {
             path: 'past-events',
             builder: (_, state) {
               final e = _extra(state);
-              return PastEventsScreen(
+              return ClubEventsListScreen(
                 groupId: e['groupId'] as String? ?? '',
+                moduleName: 'Past Events',
               );
             },
             routes: [

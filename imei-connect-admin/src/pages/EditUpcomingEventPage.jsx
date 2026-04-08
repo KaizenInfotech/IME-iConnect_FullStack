@@ -16,7 +16,7 @@ const labelStyle = {
 function toDatetimeLocal(dateStr) {
   if (!dateStr) return '';
   const clean = dateStr.replace(/[\u202f\u00a0]/g, ' ').trim();
-  const dmyMatch = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):?(\d{2})?\s*(AM|PM)?$/i);
+  const dmyMatch = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2}):?(\d{2})?\s*(AM|PM)?$/i);
   if (dmyMatch) {
     let [, dd, mm, yyyy, hh, min, , ampm] = dmyMatch;
     let h = parseInt(hh);

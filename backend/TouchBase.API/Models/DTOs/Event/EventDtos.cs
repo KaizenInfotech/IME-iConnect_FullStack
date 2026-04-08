@@ -90,6 +90,8 @@ public class EventListItemDto
     public string? eventImg { get; set; }
     public string? eventTitle { get; set; }
     public string? eventDateTime { get; set; }
+    public string? publishDate { get; set; }
+    public string? expiryDate { get; set; }
     public string? goingCount { get; set; }
     public string? maybeCount { get; set; }
     public string? notgoingCount { get; set; }

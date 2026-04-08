@@ -6,19 +6,25 @@ import { getUpcomingEvents, deleteEvent } from '../api/eventService';
 
 const FILTER_OPTIONS = ['All', 'Published', 'Unpublished', 'Expired'];
 
+function parseDMY(dateStr) {
+  if (!dateStr) return null;
+  const m = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2}):?(\d{2})?/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +(m[6] || 0));
+  const d = new Date(dateStr);
+  return isNaN(d) ? null : d;
+}
+
 function getFilterType(item) {
   const now = new Date();
-  const pub = item.PublishDate || item.publishDate;
-  const exp = item.ExpiryDate || item.expiryDate;
-  if (exp && new Date(exp) < now) return 'Expired';
-  if (pub && new Date(pub) <= now) return 'Published';
+  const pub = parseDMY(item.PublishDate || item.publishDate);
+  const exp = parseDMY(item.ExpiryDate || item.expiryDate);
+  if (exp && exp < now) return 'Expired';
+  if (pub && pub <= now) return 'Published';
   return 'Unpublished';
 }
 
 function parseDate(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  return isNaN(d) ? null : d;
+  return parseDMY(dateStr);
 }
 
 function formatTime(dateStr) {
@@ -74,6 +80,8 @@ export default function UpcomingEventsPage() {
       const events = res.data?.EventsListResult || [];
       const data = events.map(e => ({
         Id: e.eventID, EventTitle: e.eventTitle, EventDate: e.eventDateTime,
+        PublishDate: e.publishDate || e.pubDate || '',
+        ExpiryDate: e.expiryDate || '',
         EventVenue: e.venue, EventDesc: '',
         EventImage: e.eventImg, GroupId: e.grpID, RegLink: '',
       }));

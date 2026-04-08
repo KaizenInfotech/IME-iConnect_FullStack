@@ -469,7 +469,8 @@ public class AnnouncementService : IAnnouncementService
 {
     private readonly AppDbContext _db;
     private readonly INotificationService _notificationService;
-    public AnnouncementService(AppDbContext db, IHttpClientFactory httpClientFactory, INotificationService notificationService) { _db = db; _notificationService = notificationService; }
+    private readonly IConfiguration _configuration;
+    public AnnouncementService(AppDbContext db, IHttpClientFactory httpClientFactory, INotificationService notificationService, IConfiguration configuration) { _db = db; _notificationService = notificationService; _configuration = configuration; }
 
     public async Task<object> GetAnnouncementList(AnnouncementListRequest request)
     {
@@ -530,7 +531,20 @@ public class AnnouncementService : IAnnouncementService
         }
 
         ann.AnnounTitle = request.announTitle; ann.AnnounDesc = request.announceDEsc;
-        ann.AnnounType = request.annType; ann.AnnounImg = request.announImg;
+        ann.AnnounType = request.annType;
+        // Convert base64 image to file if needed
+        var imgValue = request.announImg;
+        if (!string.IsNullOrEmpty(imgValue) && imgValue.StartsWith("data:image"))
+        {
+            var base64Data = imgValue.Substring(imgValue.IndexOf(",") + 1);
+            var ext = imgValue.Contains("png") ? ".png" : ".jpg";
+            var fileName = $"{Guid.NewGuid()}{ext}";
+            var dir = Path.Combine("wwwroot", "uploads", "announcement"); Directory.CreateDirectory(dir);
+            await File.WriteAllBytesAsync(Path.Combine(dir, fileName), Convert.FromBase64String(base64Data));
+            var appBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
+            imgValue = $"{appBaseUrl}/uploads/announcement/{fileName}";
+        }
+        ann.AnnounImg = imgValue;
         ann.PublishDate = request.publishDate; ann.ExpiryDate = request.expiryDate;
         ann.SendSMSNonSmartPh = request.sendSMSNonSmartPh; ann.SendSMSAll = request.sendSMSAll;
         ann.ModuleId = request.moduleId; ann.RegLink = request.reglink;
@@ -1460,7 +1474,8 @@ public class WebLinkService : IWebLinkService
 public class PastPresidentService : IPastPresidentService
 {
     private readonly AppDbContext _db;
-    public PastPresidentService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; }
+    private readonly IConfiguration _configuration;
+    public PastPresidentService(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration configuration) { _db = db; _configuration = configuration; }
     public async Task<object> GetPastPresidentsList(PastPresidentRequest request)
     {
         var grpId = int.TryParse(request.GroupId, out var gid) ? gid : 0;
@@ -1474,7 +1489,18 @@ public class PastPresidentService : IPastPresidentService
     public async Task<object> AddPastPresident(AddPastPresidentRequest request)
     {
         var grpId = int.TryParse(request.GroupId, out var gid) ? gid : 0;
-        var pp = new PastPresident { GroupId = grpId, MemberName = request.MemberName, PhotoPath = request.PhotoPath, TenureYear = request.TenureYear, Designation = request.Designation };
+        var photoPath = request.PhotoPath;
+        if (!string.IsNullOrEmpty(photoPath) && photoPath.StartsWith("data:image"))
+        {
+            var base64Data = photoPath.Substring(photoPath.IndexOf(",") + 1);
+            var ext = photoPath.Contains("png") ? ".png" : ".jpg";
+            var fileName = $"{Guid.NewGuid()}{ext}";
+            var dir = Path.Combine("wwwroot", "uploads", "pastpresident"); Directory.CreateDirectory(dir);
+            await File.WriteAllBytesAsync(Path.Combine(dir, fileName), Convert.FromBase64String(base64Data));
+            var appBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
+            photoPath = $"{appBaseUrl}/uploads/pastpresident/{fileName}";
+        }
+        var pp = new PastPresident { GroupId = grpId, MemberName = request.MemberName, PhotoPath = photoPath, TenureYear = request.TenureYear, Designation = request.Designation };
         _db.PastPresidents.Add(pp);
         await _db.SaveChangesAsync();
         return new { status = "0", message = "success" };
@@ -1486,7 +1512,21 @@ public class PastPresidentService : IPastPresidentService
         var pp = await _db.PastPresidents.FindAsync(ppId);
         if (pp == null) return new { status = "1", message = "Not found" };
         if (request.MemberName != null) pp.MemberName = request.MemberName;
-        if (request.PhotoPath != null) pp.PhotoPath = request.PhotoPath;
+        if (request.PhotoPath != null)
+        {
+            var photoPath = request.PhotoPath;
+            if (!string.IsNullOrEmpty(photoPath) && photoPath.StartsWith("data:image"))
+            {
+                var base64Data = photoPath.Substring(photoPath.IndexOf(",") + 1);
+                var ext = photoPath.Contains("png") ? ".png" : ".jpg";
+                var fileName = $"{Guid.NewGuid()}{ext}";
+                var dir = Path.Combine("wwwroot", "uploads", "pastpresident"); Directory.CreateDirectory(dir);
+                await File.WriteAllBytesAsync(Path.Combine(dir, fileName), Convert.FromBase64String(base64Data));
+                var appBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
+                photoPath = $"{appBaseUrl}/uploads/pastpresident/{fileName}";
+            }
+            pp.PhotoPath = photoPath;
+        }
         if (request.TenureYear != null) pp.TenureYear = request.TenureYear;
         if (request.Designation != null) pp.Designation = request.Designation;
         await _db.SaveChangesAsync();
