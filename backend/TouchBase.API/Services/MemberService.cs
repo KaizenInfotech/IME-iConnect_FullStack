@@ -328,9 +328,15 @@ public class MemberService : IMemberService
                     var picUrl = "";
                     if (int.TryParse(m["profileID"], out var mPid) && pics.ContainsKey(mPid))
                         picUrl = pics[mPid] ?? "";
-                    // Ensure pic is a full URL
+                    // Ensure pic is a full URL — bare filenames go in /uploads/profile/
                     if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                        picUrl = bodBaseUrl + (picUrl.StartsWith("/") ? picUrl : "/" + picUrl);
+                    {
+                        if (!picUrl.Contains("/"))
+                            picUrl = "/uploads/profile/" + picUrl;
+                        else if (!picUrl.StartsWith("/"))
+                            picUrl = "/" + picUrl;
+                        picUrl = bodBaseUrl + picUrl;
+                    }
                     members.Add(new
                     {
                         BOD_pkID = m["BOD_pkID"],
@@ -355,7 +361,18 @@ public class MemberService : IMemberService
         if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
         var bodBaseUrl2 = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
         var rawBodLocal = await query.Select(x => new { masterUID = x.mp.UserId.ToString(), grpID = x.gm.GroupId.ToString(), profileID = x.mp.Id.ToString(), memberName = x.mp.MemberName, membermobile = x.mp.MemberMobile, MemberDesignation = x.mp.Designation, pic = x.mp.ProfilePic ?? "", Email = x.mp.MemberEmail }).ToListAsync();
-        var localMembers = rawBodLocal.Select(x => new { x.masterUID, x.grpID, x.profileID, x.memberName, x.membermobile, x.MemberDesignation, pic = !string.IsNullOrEmpty(x.pic) && !x.pic.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? bodBaseUrl2 + (x.pic.StartsWith("/") ? x.pic : "/" + x.pic) : x.pic, x.Email }).ToList();
+        var localMembers = rawBodLocal.Select(x => {
+            var picUrl = x.pic;
+            if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!picUrl.Contains("/"))
+                    picUrl = "/uploads/profile/" + picUrl;
+                else if (!picUrl.StartsWith("/"))
+                    picUrl = "/" + picUrl;
+                picUrl = bodBaseUrl2 + picUrl;
+            }
+            return new { x.masterUID, x.grpID, x.profileID, x.memberName, x.membermobile, x.MemberDesignation, pic = picUrl, x.Email };
+        }).ToList();
         return new { TBGetBODResult = new { status = "0", message = "success", BODResult = localMembers } };
     }
 
@@ -422,11 +439,15 @@ public class MemberService : IMemberService
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                // Ensure pic is a full URL — old data may have relative paths
+                // Ensure pic is a full URL — old data may have bare filenames or relative paths
                 var picValue = reader["pic"]?.ToString() ?? "";
                 if (!string.IsNullOrEmpty(picValue) && !picValue.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!picValue.StartsWith("/")) picValue = "/" + picValue;
+                    // If it's a bare filename (no path), prepend /uploads/profile/
+                    if (!picValue.Contains("/"))
+                        picValue = "/uploads/profile/" + picValue;
+                    else if (!picValue.StartsWith("/"))
+                        picValue = "/" + picValue;
                     picValue = appBaseUrl + picValue;
                 }
 
@@ -459,7 +480,18 @@ public class MemberService : IMemberService
         if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
         var appBaseUrl2 = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
         var rawLocalMembers = await query.Select(x => new { BOD_pkID = x.mp.Id, ProfileID = x.mp.Id, FK_Master_Designation_ID = 0, PhoneNo = x.mp.MemberMobile, Email = x.mp.MemberEmail, MemberName = x.mp.MemberName, masterUID = x.mp.UserId, sr_NO = 0, grpID = 31185, pic = x.mp.ProfilePic ?? "", MemberDesignation = x.mp.Designation, membermobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile }).ToListAsync();
-        var localMembers = rawLocalMembers.Select(x => new { x.BOD_pkID, x.ProfileID, x.FK_Master_Designation_ID, x.PhoneNo, x.Email, x.MemberName, x.masterUID, x.sr_NO, x.grpID, pic = !string.IsNullOrEmpty(x.pic) && !x.pic.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? appBaseUrl2 + (x.pic.StartsWith("/") ? x.pic : "/" + x.pic) : x.pic, x.MemberDesignation, x.membermobile }).ToList();
+        var localMembers = rawLocalMembers.Select(x => {
+            var picUrl = x.pic;
+            if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!picUrl.Contains("/"))
+                    picUrl = "/uploads/profile/" + picUrl;
+                else if (!picUrl.StartsWith("/"))
+                    picUrl = "/" + picUrl;
+                picUrl = appBaseUrl2 + picUrl;
+            }
+            return new { x.BOD_pkID, x.ProfileID, x.FK_Master_Designation_ID, x.PhoneNo, x.Email, x.MemberName, x.masterUID, x.sr_NO, x.grpID, pic = picUrl, x.MemberDesignation, x.membermobile };
+        }).ToList();
         return new { status = "0", message = "success", Result = new { Table = localMembers } };
     }
 
