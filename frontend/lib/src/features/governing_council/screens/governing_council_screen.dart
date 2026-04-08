@@ -96,7 +96,7 @@ class _CouncilMemberTile extends StatelessWidget {
                     ? NetworkImage(member.pic!)
                     : null,
             child: (member.pic == null || member.pic!.isEmpty)
-                ? const Icon(Icons.person, color: AppColors.grayMedium, size: 36)
+                ? const Icon(Icons.person, color: AppColors.primaryBlue, size: 36)
                 : null,
           ),
           const SizedBox(width: 16),
