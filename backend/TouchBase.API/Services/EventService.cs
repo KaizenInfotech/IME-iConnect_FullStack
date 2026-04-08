@@ -342,6 +342,53 @@ public class EventService : IEventService
                 }
             }
 
+            // Send push notification for production DB events
+            var prodPublishTime = ScheduledNotificationHelper.ParseDate(request.publishDate);
+            var prodSendNow = prodPublishTime == null || prodPublishTime <= DateTime.Now;
+            if (eventId == 0 && grpId > 0 && prodSendNow)
+            {
+                var isChapter = await _db.Clubs.AnyAsync(c => c.GroupId == grpId);
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var extra = new Dictionary<string, string>
+                        {
+                            ["eventId"] = newEventId.ToString(),
+                            ["eventTitle"] = request.evntTitle ?? "",
+                            ["eventDate"] = request.evntDate ?? "",
+                            ["eventDesc"] = request.evntDesc ?? "",
+                            ["eventImg"] = request.eventImageID ?? "",
+                            ["reglink"] = request.reglink ?? "",
+                            ["venue"] = request.eventVenue ?? "",
+                            ["grpID"] = grpId.ToString()
+                        };
+                        if (!isChapter)
+                            await _notificationService.SendAllUsersNotification(
+                                "Event", request.evntTitle ?? "New Event",
+                                request.evntDesc ?? "A new event has been created", extra);
+                        else
+                            await _notificationService.SendGroupNotification(
+                                grpId, "Event", request.evntTitle ?? "New Event",
+                                request.evntDesc ?? "A new event has been created", extra);
+                    }
+                    catch { }
+                });
+            }
+            else if (eventId == 0 && grpId > 0 && !prodSendNow)
+            {
+                // Save to local DB so background service can send notification at publishDate
+                var scheduledEv = new Event
+                {
+                    GroupId = grpId, EventTitle = request.evntTitle, EventDesc = request.evntDesc,
+                    EventImageId = request.eventImageID, EventVenue = request.eventVenue,
+                    EventDate = request.evntDate, PublishDate = request.publishDate,
+                    RegLink = request.reglink, NotificationSent = false, CreatedBy = userId
+                };
+                _db.Events.Add(scheduledEv);
+                await _db.SaveChangesAsync();
+            }
+
             return new { status = "0", message = "success", eventID = newEventId.ToString() };
         }
         catch (Exception ex)
@@ -387,12 +434,16 @@ public class EventService : IEventService
         ev.MembersIds = request.membersIDs; ev.IsSubGrpAdmin = request.isSubGrpAdmin;
         ev.ProjectName = request.Projectname; ev.Link = request.reglink;
         ev.UpdatedAt = DateTime.UtcNow;
+
+        // Determine if notification should be sent now or scheduled for publishDate
+        var publishTime = ScheduledNotificationHelper.ParseDate(request.publishDate);
+        var sendNow = publishTime == null || publishTime <= DateTime.Now;
+        ev.NotificationSent = sendNow; // false = background service will send at publishDate
         await _db.SaveChangesAsync();
 
-        // Send push notification for new events
-        // National (not a chapter in Clubs table) → all app users; Chapter → chapter members only
-        // Flutter expects type="Event" with eventTitle, eventDate, eventDesc, eventImg, reglink, venue
-        if (eventId == 0 && grpId > 0)
+        // Send push notification immediately only if publishDate is now or in the past
+        // Otherwise, ScheduledNotificationService will send it at the publish time
+        if (eventId == 0 && grpId > 0 && sendNow)
         {
             var isChapter = await _db.Clubs.AnyAsync(c => c.GroupId == grpId);
             _ = Task.Run(async () =>
@@ -405,7 +456,7 @@ public class EventService : IEventService
                         ["eventTitle"] = request.evntTitle ?? "",
                         ["eventDate"] = request.evntDate ?? "",
                         ["eventDesc"] = request.evntDesc ?? "",
-                        ["eventImg"] = request.eventImageID ?? "",
+                        ["eventImg"] = ev.EventImageId ?? "",
                         ["reglink"] = request.reglink ?? "",
                         ["venue"] = request.eventVenue ?? "",
                         ["grpID"] = grpId.ToString()

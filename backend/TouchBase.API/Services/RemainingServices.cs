@@ -550,12 +550,16 @@ public class AnnouncementService : IAnnouncementService
         ann.ModuleId = request.moduleId; ann.RegLink = request.reglink;
         ann.InputIds = request.inputIDs; ann.RepeatDates = request.AnnouncementRepeatDates;
         ann.IsSubGrpAdmin = request.isSubGrpAdmin;
+
+        // Determine if notification should be sent now or scheduled for publishDate
+        var publishTime = ScheduledNotificationHelper.ParseDate(request.publishDate);
+        var sendNow = publishTime == null || publishTime <= DateTime.Now;
+        ann.NotificationSent = sendNow; // false = background service will send at publishDate
         await _db.SaveChangesAsync();
 
-        // Send push notification for new announcements
-        // National (not a chapter in Clubs table) → all app users; Chapter → chapter members only
-        // Flutter expects type="ann" with ann_title, Ann_date, ann_desc, ann_lnk, ann_img
-        if (annId == 0 && grpId > 0)
+        // Send push notification immediately only if publishDate is now or in the past
+        // Otherwise, ScheduledNotificationService will send it at the publish time
+        if (annId == 0 && grpId > 0 && sendNow)
         {
             var isChapter = await _db.Clubs.AnyAsync(c => c.GroupId == grpId);
             _ = Task.Run(async () =>
@@ -569,7 +573,7 @@ public class AnnouncementService : IAnnouncementService
                         ["Ann_date"] = request.publishDate ?? "",
                         ["ann_desc"] = request.announceDEsc ?? "",
                         ["ann_lnk"] = request.reglink ?? "",
-                        ["ann_img"] = request.announImg ?? "",
+                        ["ann_img"] = ann.AnnounImg ?? "",
                         ["grpID"] = grpId.ToString()
                     };
                     if (!isChapter)

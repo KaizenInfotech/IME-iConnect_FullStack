@@ -32,6 +32,7 @@ public class Event
     public string? ProjectName { get; set; }
     public string? FilterType { get; set; }
     public string? IsSubGrpAdmin { get; set; }
+    public bool NotificationSent { get; set; }
     public int CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

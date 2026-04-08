@@ -322,11 +322,15 @@ public class MemberService : IMemberService
                     .Select(mp => new { mp.Id, mp.ProfilePic })
                     .ToDictionaryAsync(mp => mp.Id, mp => mp.ProfilePic);
 
+                var bodBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
                 foreach (var m in rawMembers)
                 {
                     var picUrl = "";
                     if (int.TryParse(m["profileID"], out var mPid) && pics.ContainsKey(mPid))
                         picUrl = pics[mPid] ?? "";
+                    // Ensure pic is a full URL
+                    if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                        picUrl = bodBaseUrl + (picUrl.StartsWith("/") ? picUrl : "/" + picUrl);
                     members.Add(new
                     {
                         BOD_pkID = m["BOD_pkID"],
@@ -349,7 +353,9 @@ public class MemberService : IMemberService
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Designation != null && x.mp.Designation != "");
         if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
-        var localMembers = await query.Select(x => new { masterUID = x.mp.UserId.ToString(), grpID = x.gm.GroupId.ToString(), profileID = x.mp.Id.ToString(), memberName = x.mp.MemberName, membermobile = x.mp.MemberMobile, MemberDesignation = x.mp.Designation, pic = x.mp.ProfilePic, Email = x.mp.MemberEmail }).ToListAsync();
+        var bodBaseUrl2 = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
+        var rawBodLocal = await query.Select(x => new { masterUID = x.mp.UserId.ToString(), grpID = x.gm.GroupId.ToString(), profileID = x.mp.Id.ToString(), memberName = x.mp.MemberName, membermobile = x.mp.MemberMobile, MemberDesignation = x.mp.Designation, pic = x.mp.ProfilePic ?? "", Email = x.mp.MemberEmail }).ToListAsync();
+        var localMembers = rawBodLocal.Select(x => new { x.masterUID, x.grpID, x.profileID, x.memberName, x.membermobile, x.MemberDesignation, pic = !string.IsNullOrEmpty(x.pic) && !x.pic.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? bodBaseUrl2 + (x.pic.StartsWith("/") ? x.pic : "/" + x.pic) : x.pic, x.Email }).ToList();
         return new { TBGetBODResult = new { status = "0", message = "success", BODResult = localMembers } };
     }
 
@@ -412,9 +418,18 @@ public class MemberService : IMemberService
                 cmd.Parameters.AddWithValue("@search", $"%{request.searchText}%");
             if (!string.IsNullOrEmpty(request.YearFilter))
                 cmd.Parameters.AddWithValue("@yearFilter", request.YearFilter);
+            var appBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
+                // Ensure pic is a full URL — old data may have relative paths
+                var picValue = reader["pic"]?.ToString() ?? "";
+                if (!string.IsNullOrEmpty(picValue) && !picValue.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!picValue.StartsWith("/")) picValue = "/" + picValue;
+                    picValue = appBaseUrl + picValue;
+                }
+
                 members.Add(new
                 {
                     BOD_pkID = reader["BOD_PkID"]?.ToString(),
@@ -425,7 +440,7 @@ public class MemberService : IMemberService
                     MemberName = reader["MemberName"]?.ToString()?.Trim(),
                     masterUID = reader["masterUID"]?.ToString(),
                     grpID = reader["grpID"]?.ToString(),
-                    pic = reader["pic"]?.ToString(),
+                    pic = picValue,
                     MemberDesignation = reader["MemberDesignation"]?.ToString(),
                     membermobile = reader["membermobile"]?.ToString(),
                     chapterId = reader["chapterId"]?.ToString(),
@@ -442,7 +457,9 @@ public class MemberService : IMemberService
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Where(x => x.gm.GroupId == 31185 && x.gm.IsActive && x.mp.Designation != null && x.mp.Designation != "");
         if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
-        var localMembers = await query.Select(x => new { BOD_pkID = x.mp.Id, ProfileID = x.mp.Id, FK_Master_Designation_ID = 0, PhoneNo = x.mp.MemberMobile, Email = x.mp.MemberEmail, MemberName = x.mp.MemberName, masterUID = x.mp.UserId, sr_NO = 0, grpID = 31185, pic = x.mp.ProfilePic, MemberDesignation = x.mp.Designation, membermobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile }).ToListAsync();
+        var appBaseUrl2 = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
+        var rawLocalMembers = await query.Select(x => new { BOD_pkID = x.mp.Id, ProfileID = x.mp.Id, FK_Master_Designation_ID = 0, PhoneNo = x.mp.MemberMobile, Email = x.mp.MemberEmail, MemberName = x.mp.MemberName, masterUID = x.mp.UserId, sr_NO = 0, grpID = 31185, pic = x.mp.ProfilePic ?? "", MemberDesignation = x.mp.Designation, membermobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile }).ToListAsync();
+        var localMembers = rawLocalMembers.Select(x => new { x.BOD_pkID, x.ProfileID, x.FK_Master_Designation_ID, x.PhoneNo, x.Email, x.MemberName, x.masterUID, x.sr_NO, x.grpID, pic = !string.IsNullOrEmpty(x.pic) && !x.pic.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? appBaseUrl2 + (x.pic.StartsWith("/") ? x.pic : "/" + x.pic) : x.pic, x.MemberDesignation, x.membermobile }).ToList();
         return new { status = "0", message = "success", Result = new { Table = localMembers } };
     }
 
