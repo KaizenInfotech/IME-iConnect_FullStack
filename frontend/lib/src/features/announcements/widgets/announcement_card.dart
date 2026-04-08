@@ -33,20 +33,8 @@ class AnnouncementCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image thumbnail
-            if (announcement.hasValidImage)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  announcement.announImg!.replaceAll(' ', '%20'),
-                  width: 60,
-                  height: 60,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => _buildImagePlaceholder(),
-                ),
-              )
-            else
-              _buildImagePlaceholder(),
+            // Default icon — image shown only on detail page
+            _buildImagePlaceholder(),
 
             const SizedBox(width: 12),
 
