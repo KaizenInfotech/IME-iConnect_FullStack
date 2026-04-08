@@ -29,6 +29,21 @@ public class AuthService : IAuthService
 
     public async Task<LoginResponse> RequestOtp(LoginRequest request)
     {
+        // Test account for App Store / Play Store review
+        if (request.mobileNo == "9988776655")
+        {
+            var testUser = await _db.Users
+                .FirstOrDefaultAsync(u => u.MobileNo == "9988776655");
+            return new LoginResponse
+            {
+                status = "0",
+                message = "success",
+                otp = "7777",
+                isexists = testUser != null && testUser.IsRegistered ? "1" : "0",
+                masterUID = "13021"
+            };
+        }
+
         // Check if country code is allowed (configured in appsettings.json)
         var allowedCodes = _config.GetSection("AllowedCountryCodes").Get<string[]>() ?? new[] { "1", "91" };
         var cc = request.countryCode?.Trim();
@@ -120,17 +135,22 @@ public class AuthService : IAuthService
 
     public async Task<LoginResponse> VerifyOtp(OtpVerifyRequest request)
     {
+        // Test account for App Store / Play Store review — use masterUID 13021
+        var isTestAccount = request.mobileNo == "9988776655";
+
         var user = await _db.Users
             .Include(u => u.MemberProfiles)
                 .ThenInclude(mp => mp.GroupMemberships)
                     .ThenInclude(gm => gm.Group)
-            .FirstOrDefaultAsync(u => u.MobileNo == request.mobileNo);
+            .FirstOrDefaultAsync(u => isTestAccount
+                ? u.Id == 13021
+                : u.MobileNo == request.mobileNo);
 
         if (user == null)
             return new LoginResponse { status = "1", message = "User not found" };
 
-        // Verify OTP (in production, validate properly)
-        if (user.Otp != null && user.OtpExpiry > DateTime.UtcNow)
+        // Verify OTP (skip validation for test account)
+        if (!isTestAccount && user.Otp != null && user.OtpExpiry > DateTime.UtcNow)
         {
             // OTP valid
         }
