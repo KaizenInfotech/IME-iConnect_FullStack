@@ -366,7 +366,7 @@ public class MemberService : IMemberService
             if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             {
                 if (!picUrl.Contains("/"))
-                    picUrl = "/Documents/" + picUrl;
+                    picUrl = "/uploads/profile/" + picUrl;
                 else if (!picUrl.StartsWith("/"))
                     picUrl = "/" + picUrl;
                 picUrl = bodBaseUrl2 + picUrl;
