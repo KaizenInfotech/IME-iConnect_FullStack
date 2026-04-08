@@ -328,11 +328,11 @@ public class MemberService : IMemberService
                     var picUrl = "";
                     if (int.TryParse(m["profileID"], out var mPid) && pics.ContainsKey(mPid))
                         picUrl = pics[mPid] ?? "";
-                    // Ensure pic is a full URL — bare filenames go in /Documents/
+                    // Ensure pic is a full URL — bare filenames go in /Documents/directory/
                     if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                     {
                         if (!picUrl.Contains("/"))
-                            picUrl = "/Documents/" + picUrl;
+                            picUrl = "/Documents/directory/" + picUrl;
                         else if (!picUrl.StartsWith("/"))
                             picUrl = "/" + picUrl;
                         picUrl = bodBaseUrl + picUrl;
@@ -366,7 +366,7 @@ public class MemberService : IMemberService
             if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             {
                 if (!picUrl.Contains("/"))
-                    picUrl = "/Documents/" + picUrl;
+                    picUrl = "/Documents/directory/" + picUrl;
                 else if (!picUrl.StartsWith("/"))
                     picUrl = "/" + picUrl;
                 picUrl = bodBaseUrl2 + picUrl;
@@ -443,9 +443,9 @@ public class MemberService : IMemberService
                 var picValue = reader["pic"]?.ToString() ?? "";
                 if (!string.IsNullOrEmpty(picValue) && !picValue.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 {
-                    // If it's a bare filename (no path), prepend /Documents/
+                    // If it's a bare filename (no path), prepend /Documents/directory/
                     if (!picValue.Contains("/"))
-                        picValue = "/Documents/" + picValue;
+                        picValue = "/Documents/directory/" + picValue;
                     else if (!picValue.StartsWith("/"))
                         picValue = "/" + picValue;
                     picValue = appBaseUrl + picValue;
@@ -485,7 +485,7 @@ public class MemberService : IMemberService
             if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             {
                 if (!picUrl.Contains("/"))
-                    picUrl = "/Documents/" + picUrl;
+                    picUrl = "/Documents/directory/" + picUrl;
                 else if (!picUrl.StartsWith("/"))
                     picUrl = "/" + picUrl;
                 picUrl = appBaseUrl2 + picUrl;

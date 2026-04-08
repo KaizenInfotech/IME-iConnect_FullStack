@@ -1042,36 +1042,37 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.white.withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                // iOS: editCompany icon — opens sidebar drawer
-                GestureDetector(
-                  onTap: () {
-                    Scaffold.of(context).openDrawer();
-                  },
-                  child: Image.asset(
-                    'assets/images/edit_company.png',
-                    width: 36,
-                    height: 36,
-                  ),
-                ),
-                // iOS: clubClickedAction — navigate to BranchDashboardViewController
-                Flexible(
-                  child: GestureDetector(
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              final storage = LocalStorage.instance;
+              _pushAndCheckSession('/branch-dashboard', extra: {
+                'branchName': storage.clubName ?? '',
+                'clubName': storage.clubName ?? '',
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.white.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  // iOS: editCompany icon — opens sidebar drawer
+                  GestureDetector(
                     onTap: () {
-                      final storage = LocalStorage.instance;
-                      _pushAndCheckSession('/branch-dashboard', extra: {
-                        'branchName': storage.clubName ?? '',
-                        'clubName': storage.clubName ?? '',
-                      });
+                      Scaffold.of(context).openDrawer();
                     },
+                    child: Image.asset(
+                      'assets/images/edit_company.png',
+                      width: 36,
+                      height: 36,
+                    ),
+                  ),
+                  // iOS: clubClickedAction — navigate to BranchDashboardViewController
+                  Flexible(
                     child: Text(
                       LocalStorage.instance.clubName ?? '',
                       style: const TextStyle(
@@ -1084,17 +1085,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                ),
-                // iOS: circled right arrow — navigate to about/info
-                GestureDetector(
-                  onTap: () {
-                      final storage = LocalStorage.instance;
-                      _pushAndCheckSession('/branch-dashboard', extra: {
-                        'branchName': storage.clubName ?? '',
-                        'clubName': storage.clubName ?? '',
-                      });
-                    },
-                  child: Container(
+                  // iOS: circled right arrow — navigate to about/info
+                  Container(
                     width: 28,
                     height: 28,
                     decoration: BoxDecoration(
@@ -1110,8 +1102,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       color: AppColors.primaryBlue,
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           // Version text — outside the button bar
