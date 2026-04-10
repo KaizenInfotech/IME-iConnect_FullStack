@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
-import { getEvent, createEvent, updateEvent, getEventExtras, saveEventExtras } from '../api/eventService';
+import { getEvent, createEvent, updateEvent, getEventExtras, saveEventExtras, uploadEventDoc } from '../api/eventService';
 
 const inputStyle = {
   width: '100%', height: '34px', border: '1px solid #ccc',
@@ -61,8 +61,12 @@ export default function EventDetailPage() {
     EventDate: '',
   });
 
-  const [agendas, setAgendas] = useState([{ file: null, name: '' }]);
-  const [minutes, setMinutes] = useState([{ file: null, name: '' }]);
+  // Each doc row carries a display label (`name`) and the stored URL (`url`).
+  // `url` is what actually goes into event_agendas.file_name /
+  // event_minutes.file_name and is what the Flutter app opens.
+  const [agendas, setAgendas] = useState([{ file: null, name: '', url: '' }]);
+  const [minutes, setMinutes] = useState([{ file: null, name: '', url: '' }]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
   const [photos, setPhotos] = useState([
     { file: null, preview: null, description: '' },
     { file: null, preview: null, description: '' },
@@ -124,8 +128,11 @@ export default function EventDetailPage() {
       const extrasRes = await getEventExtras(id);
       console.log('[EventDetailPage] extras response:', JSON.stringify(extrasRes.data));
       if (extrasRes.data?.status === '0') {
-        if (extrasRes.data.agendas?.length) setAgendas(extrasRes.data.agendas.map(a => ({ file: null, name: a.fileName || '' })));
-        if (extrasRes.data.minutes?.length) setMinutes(extrasRes.data.minutes.map(m => ({ file: null, name: m.fileName || '' })));
+        // Backend returns `fileName` which is now a stored URL for newly
+        // uploaded docs, or a bare filename for legacy rows. We keep both
+        // fields in sync so the save flow round-trips either form.
+        if (extrasRes.data.agendas?.length) setAgendas(extrasRes.data.agendas.map(a => ({ file: null, name: a.fileName || '', url: a.fileName || '' })));
+        if (extrasRes.data.minutes?.length) setMinutes(extrasRes.data.minutes.map(m => ({ file: null, name: m.fileName || '', url: m.fileName || '' })));
         if (extrasRes.data.photos?.length) {
           const fetched = extrasRes.data.photos.map(p => ({ file: null, preview: p.photoPath || null, description: p.description || '' }));
           while (fetched.length < 5) fetched.push({ file: null, preview: null, description: '' });
@@ -154,16 +161,55 @@ export default function EventDetailPage() {
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: '' }));
   };
 
-  // Agenda handler (single file)
-  const handleAgendaFile = (idx, e) => {
-    const file = e.target.files[0];
-    if (file) { const a = [...agendas]; a[idx] = { file, name: file.name }; setAgendas(a); }
+  // Uploads the picked file to the backend immediately, so the admin
+  // saves a real URL into event_agendas/event_minutes rather than a bare
+  // filename. Flutter's EventDetailScreen then opens that URL via
+  // url_launcher.
+  const uploadDoc = async (file, docType) => {
+    const eventIdForUpload = isNew ? '0' : String(id).replace(/^E/, '');
+    const res = await uploadEventDoc(file, eventIdForUpload, docType);
+    if (res.data?.status !== '0' || !res.data?.url) {
+      throw new Error(res.data?.message || 'Upload failed');
+    }
+    return res.data.url;
   };
 
-  // Minutes handler (single file)
-  const handleMinuteFile = (idx, e) => {
+  const handleAgendaFile = async (idx, e) => {
     const file = e.target.files[0];
-    if (file) { const m = [...minutes]; m[idx] = { file, name: file.name }; setMinutes(m); }
+    if (!file) return;
+    setUploadingDoc(true);
+    try {
+      const url = await uploadDoc(file, 'agenda');
+      setAgendas(prev => {
+        const a = [...prev];
+        a[idx] = { file, name: file.name, url };
+        return a;
+      });
+    } catch (err) {
+      alert(`Agenda upload failed: ${err.message || err}`);
+    } finally {
+      setUploadingDoc(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleMinuteFile = async (idx, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadingDoc(true);
+    try {
+      const url = await uploadDoc(file, 'minutes');
+      setMinutes(prev => {
+        const m = [...prev];
+        m[idx] = { file, name: file.name, url };
+        return m;
+      });
+    } catch (err) {
+      alert(`Minutes upload failed: ${err.message || err}`);
+    } finally {
+      setUploadingDoc(false);
+      e.target.value = '';
+    }
   };
 
   // Photo handlers
@@ -230,12 +276,15 @@ export default function EventDetailPage() {
         });
         alert('Event updated successfully');
       }
-      // Save extras (photos with descriptions)
+      // Save extras (photos with descriptions). For agenda/MOM we persist
+      // the uploaded URL (`a.url`) — this is what Flutter later opens. If
+      // the row came from legacy data with no new upload, fall back to
+      // `a.name` so we don't clobber the existing value.
       const extrasPayload = {
         eventID: savedEventID,
         photos: photos.filter(p => p.description || p.preview).map(p => ({ photoPath: p.preview || '', description: p.description || '' })),
-        agendaFileNames: agendas.filter(a => a.name).map(a => a.name),
-        minutesFileNames: minutes.filter(m => m.name).map(m => m.name),
+        agendaFileNames: agendas.map(a => a.url || a.name).filter(Boolean),
+        minutesFileNames: minutes.map(m => m.url || m.name).filter(Boolean),
       };
       console.log('[EventDetailPage] saving extras:', JSON.stringify(extrasPayload));
       if (savedEventID && savedEventID !== '0') {
@@ -263,9 +312,9 @@ export default function EventDetailPage() {
           <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#333' }}> - Event</span>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, backgroundColor: '#1a297d', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+          <button onClick={handleSave} disabled={saving || uploadingDoc} style={{ ...btnStyle, backgroundColor: '#1a297d', cursor: (saving || uploadingDoc) ? 'not-allowed' : 'pointer', opacity: (saving || uploadingDoc) ? 0.6 : 1 }}>
             <svg width="12" height="12" fill="currentColor" viewBox="0 0 20 20"><path d="M3 3h11.586l2.707 2.707A1 1 0 0117.586 6H18v11a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2zm2 10v4h10v-4H5zm0-6v4h7V7H5z" /></svg>
-            {isNew ? 'Save' : 'Update'}
+            {uploadingDoc ? 'Uploading…' : (isNew ? 'Save' : 'Update')}
           </button>
           <button onClick={() => navigate(-1)} style={{ ...btnStyle, backgroundColor: '#1a297d' }}>
             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>

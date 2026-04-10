@@ -6,6 +6,7 @@ import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../models/add_event_result.dart';
 import '../models/event_detail_result.dart';
+import '../models/event_extras_result.dart';
 import '../models/event_join_result.dart';
 import '../models/event_list_result.dart';
 
@@ -19,6 +20,11 @@ class EventsProvider extends ChangeNotifier {
 
   EventsDetail? _selectedEvent;
   EventsDetail? get selectedEvent => _selectedEvent;
+
+  EventExtrasResult? _selectedEventExtras;
+  EventExtrasResult? get selectedEventExtras => _selectedEventExtras;
+  bool _isLoadingExtras = false;
+  bool get isLoadingExtras => _isLoadingExtras;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -197,6 +203,31 @@ class EventsProvider extends ChangeNotifier {
     return false;
   }
 
+  /// POST Event/GetEventExtras — agenda files, MOM files and photos for an
+  /// event. Mirrors the iOS PastEventDetailViewController "extras" section.
+  Future<void> fetchEventExtras({required String eventID}) async {
+    _isLoadingExtras = true;
+    _selectedEventExtras = null;
+    notifyListeners();
+
+    try {
+      final response = await ApiClient.instance.post(
+        ApiConstants.eventGetEventExtras,
+        body: {'eventID': eventID},
+      );
+
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body) as Map<String, dynamic>;
+        _selectedEventExtras = EventExtrasResult.fromJson(jsonData);
+      }
+    } catch (e) {
+      debugPrint('fetchEventExtras error: $e');
+    }
+
+    _isLoadingExtras = false;
+    notifyListeners();
+  }
+
   // ─── iOS: addEventsResult → POST Event/AddEvent_New ──
   // ALL 25+ parameters from iOS AddEventsController
   Future<AddEventResult?> addEvent({
@@ -353,6 +384,7 @@ class EventsProvider extends ChangeNotifier {
   /// Clear selected event
   void clearSelectedEvent() {
     _selectedEvent = null;
+    _selectedEventExtras = null;
     notifyListeners();
   }
 
@@ -360,6 +392,7 @@ class EventsProvider extends ChangeNotifier {
   void clearAll() {
     _events = [];
     _selectedEvent = null;
+    _selectedEventExtras = null;
     _isLoading = false;
     _isLoadingMore = false;
     _error = null;

@@ -119,6 +119,7 @@ public interface IEventService
     Task<object> DeleteEvent(string eventId);
     Task<object> GetEventExtras(string eventId);
     Task<object> SaveEventExtras(SaveEventExtrasRequest request);
+    Task<object> UploadEventDoc(Microsoft.AspNetCore.Http.IFormFile file, string eventId, string docType);
 }
 
 public interface IAnnouncementService

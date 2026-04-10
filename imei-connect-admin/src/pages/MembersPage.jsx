@@ -254,7 +254,13 @@ export default function MembersPage() {
                     {/* Edit - green circle */}
                     <td style={{ padding: '8px 8px', textAlign: 'center' }}>
                       <button
-                        onClick={() => navigate(`/members/${mId}${filterGroupId ? `?groupId=${filterGroupId}` : ''}`)}
+                        onClick={() => {
+                          // Always pass the member's actual chapter groupId so the
+                          // edit page can resolve Chapter/Branch Name, even when
+                          // editing from the global "all members" listing.
+                          const gid = filterGroupId || m.GroupId || m.groupId || '';
+                          navigate(`/members/${mId}${gid ? `?groupId=${gid}` : ''}`);
+                        }}
                         title="Edit"
                         style={{
                           width: '26px', height: '26px', borderRadius: '50%',

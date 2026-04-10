@@ -1,0 +1,70 @@
+-- =====================================================================
+-- Normalize address_details.Country to canonical dropdown values
+-- Generated: 2026-04-10 15:24:23
+-- =====================================================================
+USE `imei_new`;
+SET sql_mode = '';
+SET autocommit = 0;
+START TRANSACTION;
+SET @now = NOW();
+
+UPDATE `address_details` SET `Country` = 'India', `UpdatedAt` = @now WHERE `Country` = 'Mumbai, India';
+UPDATE `address_details` SET `Country` = 'India', `UpdatedAt` = @now WHERE `Country` = 'Tamil Nadu, India';
+UPDATE `address_details` SET `Country` = 'India', `UpdatedAt` = @now WHERE `Country` = 'Goa, India';
+UPDATE `address_details` SET `Country` = 'India', `UpdatedAt` = @now WHERE `Country` = 'Karnataka, India';
+UPDATE `address_details` SET `Country` = 'India', `UpdatedAt` = @now WHERE `Country` = 'India, Mharashtra';
+UPDATE `address_details` SET `Country` = 'India', `UpdatedAt` = @now WHERE `Country` = 'Odisha, INDIA';
+UPDATE `address_details` SET `Country` = 'India', `UpdatedAt` = @now WHERE `Country` = 'TAMIL NADU INDIA';
+UPDATE `address_details` SET `Country` = 'India', `UpdatedAt` = @now WHERE `Country` = 'Tamilnadu, India';
+UPDATE `address_details` SET `Country` = 'India', `UpdatedAt` = @now WHERE `Country` = 'Ratnagiri, India';
+UPDATE `address_details` SET `Country` = 'India', `UpdatedAt` = @now WHERE `Country` = 'Kerala, India';
+UPDATE `address_details` SET `Country` = 'United Kingdom', `UpdatedAt` = @now WHERE `Country` = 'UK';
+UPDATE `address_details` SET `Country` = 'United Kingdom', `UpdatedAt` = @now WHERE `Country` = 'UNITED KINGDOM';
+UPDATE `address_details` SET `Country` = 'United States', `UpdatedAt` = @now WHERE `Country` = 'USA';
+UPDATE `address_details` SET `Country` = 'United States', `UpdatedAt` = @now WHERE `Country` = 'U.S.A.';
+UPDATE `address_details` SET `Country` = 'United States', `UpdatedAt` = @now WHERE `Country` = 'U.S.A';
+UPDATE `address_details` SET `Country` = 'United States', `UpdatedAt` = @now WHERE `Country` = 'UNITED STATES';
+UPDATE `address_details` SET `Country` = 'United States', `UpdatedAt` = @now WHERE `Country` = 'LA USA';
+UPDATE `address_details` SET `Country` = 'Canada', `UpdatedAt` = @now WHERE `Country` = 'CANADA';
+UPDATE `address_details` SET `Country` = 'Canada', `UpdatedAt` = @now WHERE `Country` = 'CANADA, B.C. -';
+UPDATE `address_details` SET `Country` = 'Australia', `UpdatedAt` = @now WHERE `Country` = 'AUSTRALIA';
+UPDATE `address_details` SET `Country` = 'Australia', `UpdatedAt` = @now WHERE `Country` = 'VIC, AUSTRALIA';
+UPDATE `address_details` SET `Country` = 'Australia', `UpdatedAt` = @now WHERE `Country` = 'NSW';
+UPDATE `address_details` SET `Country` = 'New Zealand', `UpdatedAt` = @now WHERE `Country` = 'NEW ZEALAND';
+UPDATE `address_details` SET `Country` = 'Hong Kong', `UpdatedAt` = @now WHERE `Country` = 'HONG KONG';
+UPDATE `address_details` SET `Country` = 'Hong Kong', `UpdatedAt` = @now WHERE `Country` = 'HONGKONG';
+UPDATE `address_details` SET `Country` = 'Hong Kong', `UpdatedAt` = @now WHERE `Country` = 'HONG KONG- S.A.R';
+UPDATE `address_details` SET `Country` = 'Hong Kong', `UpdatedAt` = @now WHERE `Country` = 'HONGKING';
+UPDATE `address_details` SET `Country` = 'Hong Kong', `UpdatedAt` = @now WHERE `Country` = 'NT, HONG KONG SAR';
+UPDATE `address_details` SET `Country` = 'Singapore', `UpdatedAt` = @now WHERE `Country` = 'SINGPORE';
+UPDATE `address_details` SET `Country` = 'Sri Lanka', `UpdatedAt` = @now WHERE `Country` = 'SRI LANKA';
+UPDATE `address_details` SET `Country` = 'Sri Lanka', `UpdatedAt` = @now WHERE `Country` = 'SRILANKA';
+UPDATE `address_details` SET `Country` = 'Sri Lanka', `UpdatedAt` = @now WHERE `Country` = 'SRI LANKA -';
+UPDATE `address_details` SET `Country` = 'Sri Lanka', `UpdatedAt` = @now WHERE `Country` = 'SRI LANKA-';
+UPDATE `address_details` SET `Country` = 'UAE', `UpdatedAt` = @now WHERE `Country` = 'U.A.E';
+UPDATE `address_details` SET `Country` = 'UAE', `UpdatedAt` = @now WHERE `Country` = 'U.A.E.';
+UPDATE `address_details` SET `Country` = 'UAE', `UpdatedAt` = @now WHERE `Country` = 'UNITED ARAB EMIRATES';
+UPDATE `address_details` SET `Country` = 'UAE', `UpdatedAt` = @now WHERE `Country` = 'Dubai';
+UPDATE `address_details` SET `Country` = 'UAE', `UpdatedAt` = @now WHERE `Country` = 'DUBAI UAE';
+UPDATE `address_details` SET `Country` = 'UAE', `UpdatedAt` = @now WHERE `Country` = 'AL SOOR ST. SHARJAH- UAE';
+UPDATE `address_details` SET `Country` = 'UAE', `UpdatedAt` = @now WHERE `Country` = 'BUR DUBAI - ZIP CODE';
+UPDATE `address_details` SET `Country` = 'Cyprus', `UpdatedAt` = @now WHERE `Country` = 'CYPRUS';
+UPDATE `address_details` SET `Country` = 'Germany', `UpdatedAt` = @now WHERE `Country` = 'GERMANY';
+UPDATE `address_details` SET `Country` = 'Thailand', `UpdatedAt` = @now WHERE `Country` = 'THAILAND';
+UPDATE `address_details` SET `Country` = 'China', `UpdatedAt` = @now WHERE `Country` = 'P.R. CHINA';
+UPDATE `address_details` SET `Country` = 'Indonesia', `UpdatedAt` = @now WHERE `Country` = 'JAKARTA, INDONESIA';
+UPDATE `address_details` SET `Country` = 'Malaysia', `UpdatedAt` = @now WHERE `Country` = 'MALAYSIA';
+UPDATE `address_details` SET `Country` = 'Bahamas', `UpdatedAt` = @now WHERE `Country` = 'NASSAU, BAHAMAS';
+UPDATE `address_details` SET `Country` = 'Japan', `UpdatedAt` = @now WHERE `Country` = 'TOKYO';
+UPDATE `address_details` SET `Country` = 'Japan', `UpdatedAt` = @now WHERE `Country` = 'JAPAN';
+UPDATE `address_details` SET `Country` = 'Kuwait', `UpdatedAt` = @now WHERE `Country` = 'KUWAIT';
+UPDATE `address_details` SET `Country` = 'Ethiopia', `UpdatedAt` = @now WHERE `Country` = 'ETHOPIA';
+UPDATE `address_details` SET `Country` = 'Oman', `UpdatedAt` = @now WHERE `Country` = 'OMAN';
+UPDATE `address_details` SET `Country` = 'Netherlands', `UpdatedAt` = @now WHERE `Country` = 'NETHERLANDS';
+UPDATE `address_details` SET `Country` = 'Philippines', `UpdatedAt` = @now WHERE `Country` = 'MANILA (NCR)';
+UPDATE `address_details` SET `Country` = 'Sweden', `UpdatedAt` = @now WHERE `Country` = 'SWEDEN';
+UPDATE `address_details` SET `Country` = 'Ukraine', `UpdatedAt` = @now WHERE `Country` = 'UKRAINE';
+UPDATE `address_details` SET `Country` = 'Switzerland', `UpdatedAt` = @now WHERE `Country` = 'SWITZERLAND';
+UPDATE `address_details` SET `Country` = 'Norway', `UpdatedAt` = @now WHERE `Country` = 'NORWAY';
+
+COMMIT;

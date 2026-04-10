@@ -41,3 +41,10 @@ public class ProfilePhotoFormRequest
     public string? GrpID { get; set; }
     public string? Type { get; set; }
 }
+
+public class UploadEventDocFormRequest
+{
+    public IFormFile? file { get; set; }
+    public string? eventID { get; set; }
+    public string? docType { get; set; } // "agenda" or "minutes"
+}

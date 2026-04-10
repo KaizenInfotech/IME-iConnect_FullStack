@@ -66,6 +66,14 @@ public class EventController : ControllerBase
         try { return Ok(await _eventService.SaveEventExtras(request)); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("UploadEventDoc")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadEventDoc([FromForm] TouchBase.API.Models.DTOs.Upload.UploadEventDocFormRequest request)
+    {
+        try { return Ok(await _eventService.UploadEventDoc(request.file!, request.eventID ?? "", request.docType ?? "agenda")); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
 }
 
 public class DeleteEventRequest { public string? eventId { get; set; } }

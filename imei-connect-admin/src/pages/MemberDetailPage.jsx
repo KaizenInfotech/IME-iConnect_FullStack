@@ -14,8 +14,13 @@ const stateOptions = [
 ];
 
 const countryOptions = [
-  '- Select -', 'India', 'United States', 'United Kingdom', 'Canada', 'Australia',
-  'Nepal', 'Bangladesh', 'Sri Lanka', 'Singapore', 'UAE',
+  '- Select -',
+  'India',
+  'Australia', 'Bahamas', 'Bangladesh', 'Canada', 'China', 'Cyprus',
+  'Ethiopia', 'France', 'Germany', 'Hong Kong', 'Indonesia', 'Japan',
+  'Kuwait', 'Malaysia', 'Nepal', 'Netherlands', 'New Zealand', 'Norway',
+  'Oman', 'Philippines', 'Singapore', 'Sri Lanka', 'Sweden', 'Switzerland',
+  'Thailand', 'UAE', 'Ukraine', 'United Kingdom', 'United States',
 ];
 
 export default function MemberDetailPage() {
@@ -23,7 +28,10 @@ export default function MemberDetailPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const filterGroupId = searchParams.get('groupId');
-  const groupId = filterGroupId || '33359';
+  // Use the chapter id from the URL query (passed by MembersPage). Fallback to
+  // empty string so the backend at least returns the member record without
+  // overwriting Chaptr_Brnch_Name with a wrong group's name.
+  const groupId = filterGroupId || '';
   const fileInputRef = useRef(null);
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -65,6 +73,9 @@ export default function MemberDetailPage() {
     setLoading(true);
     try {
       // Fetch dropdowns
+      let loadedGrades = [];
+      let loadedCategories = [];
+      let loadedChapters = []; // [{ id, name }]
       try {
         const { default: api } = await import('../api/axiosInstance');
         const { getClubList } = await import('../api/groupService');
@@ -73,14 +84,22 @@ export default function MemberDetailPage() {
           api.post('/FindRotarian/GetCategoryList', {}),
           getClubList(),
         ]);
-        setGradeOptions((gradeRes.data?.str?.Table || []).map(g => {
+        loadedGrades = (gradeRes.data?.str?.Table || []).map(g => {
           const n = g.name; return typeof n === 'object' ? n?.name || '' : n || '';
-        }).filter(Boolean));
-        setCategoryOptions((catRes.data?.str?.Table || []).map(c => {
-          const n = c.name; return typeof n === 'object' ? n?.name || '' : n || '';
-        }).filter(Boolean));
+        }).filter(Boolean);
+        loadedCategories = (catRes.data?.str?.Table || []).map(c => {
+          const n = c.name || c.CatName; return typeof n === 'object' ? n?.name || '' : n || '';
+        }).filter(Boolean);
         const clubs = clubRes.data?.TBGetClubResult?.ClubResult?.Table || [];
-        setChapterOptions(clubs.map(c => c.group_name || '').filter(Boolean));
+        loadedChapters = clubs
+          .map(c => ({
+            id: String(c.GroupId ?? c.groupId ?? c.Id ?? c.id ?? ''),
+            name: c.group_name || c.GrpName || c.ClubName || '',
+          }))
+          .filter(c => c.name);
+        setGradeOptions(loadedGrades);
+        setCategoryOptions(loadedCategories);
+        setChapterOptions(loadedChapters);
       } catch {}
 
       const res = await getMember(id, groupId);
@@ -90,13 +109,68 @@ export default function MemberDetailPage() {
       if (m) {
         const dob = m.DOB || '';
         const doa = m.DOA || '';
-        // Support both dd/MM/yyyy and yyyy-MM-dd formats
-        let dobDay = '', dobMonth = '';
-        if (dob.includes('/')) { const p = dob.split('/'); dobDay = p[0]; dobMonth = p[1]; }
-        else if (dob.includes('-')) { const p = dob.split('-'); dobDay = p[2]; dobMonth = p[1]; }
-        let doaDay = '', doaMonth = '';
-        if (doa.includes('/')) { const p = doa.split('/'); doaDay = p[0]; doaMonth = p[1]; }
-        else if (doa.includes('-')) { const p = doa.split('-'); doaDay = p[2]; doaMonth = p[1]; }
+
+        // --- Field fallbacks for old members ---------------------------------
+        // The backend / older records may use slightly different casings or
+        // legacy column names, so try every reasonable variant before giving up.
+        const rawGrade =
+          m.Membership_Grade ?? m.MembershipGrade ?? m.membership_grade ??
+          m.Grade ?? m.MemberGrade ?? '';
+        const rawCategory =
+          m.CategoryName ?? m.Category ?? m.category_name ??
+          m.categoryName ?? '';
+        const rawChapterName =
+          m.Chaptr_Brnch_Name ?? m.ChapterBranchName ?? m.Chapter_Branch_Name ??
+          m.ChapterName ?? m.GrpName ?? m.GroupName ?? m.group_name ?? '';
+        const rawChapterId = String(
+          m.GrpID ?? m.GroupId ?? m.groupId ?? groupId ?? ''
+        );
+
+        // Helper: find a matching dropdown option using
+        // case-insensitive / trimmed comparison so trailing spaces or
+        // capitalisation differences don't cause silent mismatches.
+        const findOption = (list, value) => {
+          if (!value) return '';
+          const needle = String(value).trim().toLowerCase();
+          return list.find(o => String(o).trim().toLowerCase() === needle) || '';
+        };
+
+        // Resolve Membership Grade — fall back to the raw value (and inject it
+        // into the dropdown options below) so it is at least visible to the
+        // user and can be saved back unchanged.
+        let resolvedGrade = findOption(loadedGrades, rawGrade) || rawGrade;
+        if (resolvedGrade && !loadedGrades.some(g => String(g).trim().toLowerCase() === resolvedGrade.trim().toLowerCase())) {
+          loadedGrades = [...loadedGrades, resolvedGrade];
+          setGradeOptions(loadedGrades);
+        }
+
+        // Resolve Category — same approach.
+        let resolvedCategory = findOption(loadedCategories, rawCategory) || rawCategory;
+        if (resolvedCategory && !loadedCategories.some(c => String(c).trim().toLowerCase() === resolvedCategory.trim().toLowerCase())) {
+          loadedCategories = [...loadedCategories, resolvedCategory];
+          setCategoryOptions(loadedCategories);
+        }
+
+        // Resolve Chapter / Branch Name. Prefer matching by GroupId (most
+        // reliable for old records), then by name.
+        let resolvedChapter = '';
+        if (rawChapterId) {
+          const byId = loadedChapters.find(c => c.id === rawChapterId);
+          if (byId) resolvedChapter = byId.name;
+        }
+        if (!resolvedChapter && rawChapterName) {
+          const needle = rawChapterName.trim().toLowerCase();
+          const byName = loadedChapters.find(c => c.name.trim().toLowerCase() === needle);
+          resolvedChapter = byName ? byName.name : rawChapterName;
+        }
+        // If we still have a chapter value not present in the loaded list,
+        // inject it so the <select> can display it.
+        if (resolvedChapter && !loadedChapters.some(c => c.name.trim().toLowerCase() === resolvedChapter.trim().toLowerCase())) {
+          loadedChapters = [...loadedChapters, { id: rawChapterId || '', name: resolvedChapter }];
+          setChapterOptions(loadedChapters);
+        }
+        // ---------------------------------------------------------------------
+
         setForm({
           FirstName: m.First_Name || '',
           MiddleName: m.Middle_Name || '',
@@ -109,10 +183,10 @@ export default function MemberDetailPage() {
           BloodGroup: m.blood_Group || '- Select -',
           SecondaryMobile: m.Secondry_num || '',
           MembershipID: m.IMEI_Membership_Id || '',
-          MembershipGrade: m.Membership_Grade || '- Select -',
-          Category: m.CategoryName || '- Select -',
+          MembershipGrade: resolvedGrade || '- Select -',
+          Category: resolvedCategory || '- Select -',
           CompanyName: m.Company_name || '',
-          ChapterBranchName: m.Chaptr_Brnch_Name || '- Select -',
+          ChapterBranchName: resolvedChapter || '- Select -',
           Address: m.Address || '',
           City: m.City || '',
           State: m.State || '- Select -',
@@ -464,7 +538,9 @@ export default function MemberDetailPage() {
               className={inputCls}
             >
               <option>- Select -</option>
-              {chapterOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              {chapterOptions.map(c => (
+                <option key={c.id || c.name} value={c.name}>{c.name}</option>
+              ))}
             </select>
           </div>
         </div>

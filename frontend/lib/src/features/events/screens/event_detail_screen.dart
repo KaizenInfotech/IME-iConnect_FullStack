@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +11,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/common_loader.dart';
 import '../../../core/widgets/common_toast.dart';
 import '../models/event_detail_result.dart';
+import '../models/event_extras_result.dart';
 import '../providers/events_provider.dart';
 import '../widgets/event_share_sheet.dart';
 import '../widgets/rsvp_button.dart';
@@ -61,6 +64,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       eventID: widget.eventID,
       grpId: widget.grpId,
     );
+    // Agenda, minutes-of-meeting and photo gallery live in separate prod
+    // tables. iOS PastEventDetailViewController fetches them on load.
+    await provider.fetchEventExtras(eventID: widget.eventID);
 
     if (!mounted) return;
     CommonLoader.dismiss(context);
@@ -509,6 +515,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       ],
                     ),
                   ),
+                // Agenda / Minutes of Meeting / Photos — iOS:
+                // PastEventDetailViewController. Populated from
+                // event_agendas, event_minutes, event_photos via
+                // Event/GetEventExtras.
+                _buildExtrasSection(provider),
                 // Repeat events — iOS: repeatEventResult
                 if (event.repeatEventResult != null &&
                     event.repeatEventResult!.isNotEmpty) ...[
@@ -558,6 +569,200 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// iOS PastEventDetailViewController: agenda button, MOM button and
+  /// 2-column photo gallery — rendered only when the extras API returned
+  /// any documents or photos.
+  Widget _buildExtrasSection(EventsProvider provider) {
+    final extras = provider.selectedEventExtras;
+    if (extras == null) return const SizedBox.shrink();
+
+    final agendas =
+        extras.agendas.where((a) => (a.fileName ?? '').isNotEmpty).toList();
+    final minutes =
+        extras.minutes.where((m) => (m.fileName ?? '').isNotEmpty).toList();
+    final photos =
+        extras.photos.where((p) => (p.photoPath ?? '').isNotEmpty).toList();
+
+    if (agendas.isEmpty && minutes.isEmpty && photos.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (agendas.isNotEmpty) ...[
+            const Text(
+              'Agenda',
+              style: TextStyle(
+                fontFamily: AppTextStyles.fontFamily,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...agendas.map(
+              (a) => _buildDocTile(Icons.description, a.fileName!),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (minutes.isNotEmpty) ...[
+            const Text(
+              'Minutes of Meeting',
+              style: TextStyle(
+                fontFamily: AppTextStyles.fontFamily,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...minutes.map(
+              (m) => _buildDocTile(Icons.note_alt, m.fileName!),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (photos.isNotEmpty) ...[
+            const Text(
+              'Photos',
+              style: TextStyle(
+                fontFamily: AppTextStyles.fontFamily,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate:
+                  const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: 1,
+              ),
+              itemCount: photos.length,
+              itemBuilder: (_, i) => _buildPhotoTile(photos[i]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDocTile(IconData icon, String fileName) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: OutlinedButton.icon(
+        onPressed: () => _launchUrl(fileName),
+        icon: Icon(icon, size: 18, color: AppColors.primary),
+        label: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            fileName,
+            style: const TextStyle(
+              fontFamily: AppTextStyles.fontFamily,
+              fontSize: 13,
+              color: AppColors.textPrimary,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          alignment: Alignment.centerLeft,
+          side: const BorderSide(color: AppColors.primary),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+          ),
+          minimumSize: const Size(double.infinity, 44),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhotoTile(EventExtraPhoto photo) {
+    final path = photo.photoPath ?? '';
+    final ImageProvider? provider = _photoProvider(path);
+
+    return GestureDetector(
+      onTap: provider == null
+          ? null
+          : () => _openPhotoViewer(provider, photo.description),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: provider != null
+            ? Image(
+                image: provider,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _photoPlaceholder(),
+              )
+            : _photoPlaceholder(),
+      ),
+    );
+  }
+
+  Widget _photoPlaceholder() {
+    return Container(
+      color: AppColors.grayLight,
+      child: const Center(
+        child:
+            Icon(Icons.broken_image, color: AppColors.grayMedium, size: 32),
+      ),
+    );
+  }
+
+  /// `photoPath` may be a full HTTP(S) URL, a base64 `data:` URL (the admin
+  /// panel currently saves photos as data URLs), or a relative path. Returns
+  /// null for unsupported formats so the tile can show a placeholder.
+  ImageProvider? _photoProvider(String path) {
+    if (path.isEmpty) return null;
+    if (path.startsWith('data:')) {
+      final commaIdx = path.indexOf(',');
+      if (commaIdx == -1) return null;
+      try {
+        final bytes = base64Decode(path.substring(commaIdx + 1));
+        return MemoryImage(bytes);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return NetworkImage(path.replaceAll(' ', '%20'));
+    }
+    return null;
+  }
+
+  void _openPhotoViewer(ImageProvider image, String? description) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            iconTheme: const IconThemeData(color: Colors.white),
+            elevation: 0,
+            title: Text(
+              description ?? '',
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image(image: image, fit: BoxFit.contain),
+            ),
+          ),
+        ),
       ),
     );
   }

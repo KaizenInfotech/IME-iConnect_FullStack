@@ -656,4 +656,34 @@ public class EventService : IEventService
         }
         catch (Exception ex) { return new { status = "1", message = ex.Message }; }
     }
+
+    /// Stores an uploaded agenda or minutes-of-meeting document under
+    /// wwwroot/uploads/event-docs/ and returns the public URL. The URL is
+    /// what the admin panel then persists into event_agendas.file_name /
+    /// event_minutes.file_name via SaveEventExtras, so the Flutter detail
+    /// screen can open it with url_launcher.
+    public async Task<object> UploadEventDoc(Microsoft.AspNetCore.Http.IFormFile file, string eventId, string docType)
+    {
+        if (file == null || file.Length == 0)
+            return new { status = "1", message = "No file provided" };
+
+        var safeType = (docType == "minutes") ? "minutes" : "agenda";
+        var ext = Path.GetExtension(file.FileName);
+        var fileName = $"{safeType}_{eventId}_{Guid.NewGuid():N}{ext}";
+        var dir = Path.Combine("wwwroot", "uploads", "event-docs");
+        Directory.CreateDirectory(dir);
+        await using var stream = new FileStream(Path.Combine(dir, fileName), FileMode.Create);
+        await file.CopyToAsync(stream);
+        // Build full URL using configured base URL — this is the same
+        // pattern MemberService.UploadProfilePhoto uses, and is necessary
+        // because the deployed API sits behind a reverse proxy at
+        // /V2 that Request.Host doesn't see. Returning an absolute URL
+        // lets the Flutter app open the file directly with url_launcher.
+        var relativePath = $"/uploads/event-docs/{fileName}";
+        var appBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
+        var url = !string.IsNullOrEmpty(appBaseUrl)
+            ? $"{appBaseUrl}{relativePath}"
+            : relativePath;
+        return new { status = "0", message = "success", url, fileName = file.FileName };
+    }
 }

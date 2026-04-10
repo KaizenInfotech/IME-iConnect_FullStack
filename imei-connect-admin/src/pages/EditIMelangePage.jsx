@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import { getMerItems, updateMerItem } from '../api/merService';
 
@@ -28,6 +28,8 @@ function toDatetimeLocal(dateStr) {
 export default function EditIMelangePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const stateYear = location.state?.year;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -45,9 +47,17 @@ export default function EditIMelangePage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await getMerItems('2026', '2');
-        const allItems = res.data?.TBMERListResult?.MERListResult || [];
-        const item = allItems.find(m => String(m.MER_ID) === String(id));
+        const currentYear = new Date().getFullYear();
+        const yearsToTry = stateYear
+          ? [stateYear]
+          : Array.from({ length: currentYear - 2022 + 1 }, (_, i) => currentYear - i);
+        let item = null;
+        for (const y of yearsToTry) {
+          const res = await getMerItems(String(y), '2');
+          const allItems = res.data?.TBMERListResult?.MERListResult || [];
+          item = allItems.find(m => String(m.MER_ID) === String(id));
+          if (item) break;
+        }
         if (item) {
           const hasFile = !!item.File_Path;
           setForm({
@@ -65,7 +75,7 @@ export default function EditIMelangePage() {
       } catch {}
       finally { setLoading(false); }
     })();
-  }, [id]);
+  }, [id, stateYear]);
 
   const handleSubmit = async () => {
     if (!form.Title || form.Title === '-Select-') { alert('Please Select Title'); return; }

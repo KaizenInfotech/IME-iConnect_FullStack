@@ -249,7 +249,7 @@ export default function MerPage() {
                     {/* Edit - blue square */}
                     <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                       <button
-                        onClick={() => navigate(`/mer/${item.Id || item.id}/edit`)}
+                        onClick={() => navigate(`/mer/${item.Id || item.id}/edit`, { state: { year } })}
                         title="Edit"
                         style={{
                           width: '28px', height: '28px', borderRadius: '4px',

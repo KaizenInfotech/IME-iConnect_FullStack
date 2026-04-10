@@ -864,12 +864,49 @@ public class AttendanceService : IAttendanceService
             using var conn = new MySqlConnector.MySqlConnection(ProdAttConnStr);
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT attendance_id as AttendanceID, name as AttendanceName, AttendanceDate, '' as Attendancetime, COALESCE(MembersCount,0) as member_count, COALESCE(VisitorsCount,0) as visitor_count, COALESCE(AttendanceDesc,'') as Description FROM attentance_master WHERE fk_group_id=@grp AND (isdeleted=0 OR isdeleted IS NULL) ORDER BY attendance_id DESC";
+            // Exclude rows auto-created by the Past Events admin page —
+            // those carry FK_eventID and are stored only so Event/GetEventList
+            // / Event/GetEventDetails can pull the typed Attendance number
+            // via JOIN. They don't represent real "Events Attendance"
+            // records (no member/visitor detail rows behind them), so the
+            // Flutter Events Attendance listing must skip them.
+            // Pull every count column the legacy table tracks so the
+            // Meeting Wise Excel report can show all the breakdowns.
+            cmd.CommandText = @"SELECT attendance_id as AttendanceID, name as AttendanceName, AttendanceDate,
+                                       '' as Attendancetime,
+                                       COALESCE(MembersCount,0) as member_count,
+                                       COALESCE(VisitorsCount,0) as visitor_count,
+                                       COALESCE(AnnsCount,0) as anns_count,
+                                       COALESCE(AnnetsCount,0) as annets_count,
+                                       COALESCE(RotariansCount,0) as rotarians_count,
+                                       COALESCE(DistrictDelegatesCount,0) as district_delegates_count,
+                                       COALESCE(AttendanceDesc,'') as Description
+                                FROM attentance_master
+                                WHERE fk_group_id=@grp AND (isdeleted=0 OR isdeleted IS NULL)
+                                  AND (FK_eventID IS NULL OR FK_eventID = 0)
+                                ORDER BY attendance_id DESC";
             cmd.Parameters.AddWithValue("@grp", grpId);
             using var reader = await cmd.ExecuteReaderAsync();
+            int dateOrdinal = reader.GetOrdinal("AttendanceDate");
             while (await reader.ReadAsync())
             {
-                records.Add(new { AttendanceID = reader["AttendanceID"], AttendanceName = reader["AttendanceName"]?.ToString(), AttendanceDate = reader["AttendanceDate"]?.ToString(), Attendancetime = reader["Attendancetime"]?.ToString(), member_count = reader["member_count"], visitor_count = reader["visitor_count"], Description = reader["Description"]?.ToString() });
+                // Format datetime as stable ISO 8601 — see note in GetAttendanceDetails.
+                string? attDate = reader.IsDBNull(dateOrdinal)
+                    ? null
+                    : reader.GetDateTime(dateOrdinal).ToString("yyyy-MM-ddTHH:mm:ss");
+                records.Add(new {
+                    AttendanceID = reader["AttendanceID"],
+                    AttendanceName = reader["AttendanceName"]?.ToString(),
+                    AttendanceDate = attDate,
+                    Attendancetime = reader["Attendancetime"]?.ToString(),
+                    member_count = reader["member_count"],
+                    visitor_count = reader["visitor_count"],
+                    anns_count = reader["anns_count"],
+                    annets_count = reader["annets_count"],
+                    rotarians_count = reader["rotarians_count"],
+                    district_delegates_count = reader["district_delegates_count"],
+                    Description = reader["Description"]?.ToString()
+                });
             }
             if (records.Count > 0)
                 return new { TBAttendanceListResult = new { status = "0", message = "success", Result = new { Table = records } } };
@@ -897,13 +934,23 @@ public class AttendanceService : IAttendanceService
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
+                // AttendanceDate column is a MySQL `datetime`. We must format
+                // it as a stable ISO 8601 string here — calling `.ToString()`
+                // on a DateTime uses CurrentCulture, which produces formats
+                // like "4/15/2026 4:46:00 PM" that the frontend can't parse,
+                // leaving the date input blank.
+                int dateOrdinal = reader.GetOrdinal("AttendanceDate");
+                string? attendanceDate = null;
+                if (!reader.IsDBNull(dateOrdinal))
+                    attendanceDate = reader.GetDateTime(dateOrdinal).ToString("yyyy-MM-ddTHH:mm:ss");
+
                 return new AttendanceDetailResponse
                 {
                     status = "0", message = "success",
                     AttendanceDetailsResult = new List<AttendanceDetailDto> { new() {
                         AttendanceID = reader["attendance_id"]?.ToString(),
                         AttendanceName = reader["name"]?.ToString(),
-                        AttendanceDate = reader["AttendanceDate"]?.ToString(),
+                        AttendanceDate = attendanceDate,
                         AttendanceDesc = reader["AttendanceDesc"]?.ToString(),
                         MemberCount = reader["MembersCount"] as int? ?? 0,
                         VisitorsCount = reader["VisitorsCount"] as int? ?? 0,
@@ -1408,12 +1455,24 @@ public class FindRotarianService : IFindRotarianService
         var cats = await _db.Categories.OrderBy(c => c.Id).Select(c => new { id = c.Id, name = c.CatName }).ToListAsync();
         return new { status = "0", message = "success", str = new { Table = cats } };
     }
-    public async Task<object> GetMemberGradeList()
+    public Task<object> GetMemberGradeList()
     {
-        var grades = await _db.MemberProfiles.Where(mp => mp.MembershipGrade != null && mp.MembershipGrade != "")
-            .Select(mp => mp.MembershipGrade).Distinct().ToListAsync();
-        var result = grades.Select((g, i) => new { id = i + 1, name = g }).ToList();
-        return new { status = "0", message = "success", str = new { Table = result } };
+        // Canonical IMEI Membership Grade list — must be hard-coded so the
+        // Add/Edit dropdowns always show every selectable grade, even ones
+        // no member currently has. Mirrors the old PHP API's response shape
+        // (FindRotarian/GetMemberGradeList) including the original ids.
+        var grades = new[]
+        {
+            new { id = 1, name = "Fellow" },
+            new { id = 3, name = "Member" },
+            new { id = 5, name = "Associate" },
+            new { id = 6, name = "Associate Member" },
+            new { id = 7, name = "Graduate" },
+            new { id = 9, name = "Student" },
+        };
+        return Task.FromResult<object>(
+            new { status = "0", message = "success", str = new { Table = grades } }
+        );
     }
     public async Task<object> GetClubList()
     {

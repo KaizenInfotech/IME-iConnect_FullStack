@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/shared/Modal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
-import { getAttendanceRecords, createAttendance, updateAttendance, deleteAttendance } from '../api/attendanceService';
+import { getAttendanceRecords, getAttendanceMembers, createAttendance, updateAttendance, deleteAttendance } from '../api/attendanceService';
 // memberService imported dynamically in fetchMembers
 
 const currentYear = new Date().getFullYear();
@@ -251,29 +252,212 @@ export default function AttendancePage() {
     }
   };
 
-  const downloadCSV = (data, filename) => {
-    if (!data || data.length === 0) { alert('No records found for download.'); return; }
-    const headers = Object.keys(data[0]);
-    const csv = [headers.join(','), ...data.map(row => headers.map(h => `"${(row[h] ?? '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
+  // ──────────────────────────────────────────────────────────────────────
+  //  Reports
+  //
+  //  Format spec is taken directly from the user's reference files:
+  //    /Users/ios2/Downloads/Meeting_wise.xlsx   – real Excel
+  //    /Users/ios2/Downloads/Member_wise.xls     – HTML-as-Excel
+  //  Both reports are scoped to the currently-selected chapter and the
+  //  currently-displayed (year-filtered, search-filtered) list of events.
+  // ──────────────────────────────────────────────────────────────────────
+
+  const safeFile = (s) => String(s || 'Chapter').replace(/[^a-z0-9_\-]+/gi, '_');
+
+  const num = (v) => {
+    const n = Number(v);
+    return isNaN(n) ? 0 : n;
   };
 
   const exportMeetingWise = () => {
-    // Downloads attendance meetings list for this chapter
-    const data = items.map(i => ({ AttendanceName: i.AttendanceName, AttendanceDate: i.AttendanceDate, AttendanceTime: i.AttendanceTime, MemberCount: i.MemberCount, VisitorCount: i.VisitorCount, Description: i.Description }));
-    downloadCSV(data, 'MeetingWiseReport.csv');
+    if (!items || items.length === 0) { alert('No records found for download.'); return; }
+    const chapter = chapterName || 'Chapter';
+
+    // Build the sheet as a 2-D array of cell values matching the reference.
+    // Rows:
+    //   1: chapter name (merged across all columns)
+    //   2: column headers
+    //   3..N: one row per event
+    //   last: totals row
+    const headers = [
+      'Sr.No', 'Club Name', 'Date', 'Title', 'Description',
+      'MembersCount', 'VisitorsCount',
+    ];
+
+    const rows = items.map((it, idx) => {
+      const dateRaw = it.AttendanceDate || it.attendanceDate || '';
+      const d = dateRaw ? new Date(dateRaw) : null;
+      return [
+        idx + 1,
+        chapter,
+        d && !isNaN(d) ? d : (dateRaw || ''),
+        it.AttendanceName || it.attendanceName || '',
+        it.Description || it.AttendanceDesc || '',
+        num(it.MemberCount ?? it.member_count),
+        num(it.VisitorCount ?? it.visitor_count),
+      ];
+    });
+
+    // Totals across all data rows (only the count columns).
+    const totals = ['', '', '', '', 'Total',
+      rows.reduce((s, r) => s + num(r[5]), 0),
+      rows.reduce((s, r) => s + num(r[6]), 0),
+    ];
+
+    const aoa = [
+      [chapter, '', '', '', '', '', ''], // row 1 (will be merged)
+      headers,                            // row 2
+      ...rows,                            // data
+      totals,                             // totals
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Merge the chapter name across all columns on row 1 (A1:G1).
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
+
+    // Format the Date column (column C, index 2) as a date for any cell that
+    // holds a real Date object. SheetJS will write the underlying serial number.
+    for (let r = 2; r < 2 + rows.length; r++) {   // data rows only
+      const addr = XLSX.utils.encode_cell({ r, c: 2 });
+      const cell = ws[addr];
+      if (cell && cell.v instanceof Date) {
+        cell.t = 'd';
+        cell.z = 'dd-mmm-yyyy';
+      }
+    }
+
+    // Reasonable column widths matching the reference.
+    ws['!cols'] = [
+      { wch: 7 }, { wch: 18 }, { wch: 12 }, { wch: 24 }, { wch: 22 },
+      { wch: 14 }, { wch: 14 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Meeting Wise');
+    XLSX.writeFile(wb, `Meeting_wise_${safeFile(chapter)}.xlsx`);
   };
 
-  const exportMemberWise = () => {
-    // Downloads member-wise attendance summary (who attended which meetings)
-    // This requires attendance records to exist — if none, show alert
+  const exportMemberWise = async () => {
     if (!items || items.length === 0) { alert('No records found for download.'); return; }
-    const data = items.map(i => ({ AttendanceName: i.AttendanceName, AttendanceDate: i.AttendanceDate, MemberCount: i.MemberCount, VisitorCount: i.VisitorCount }));
-    downloadCSV(data, 'MemberWiseReport.csv');
+    const chapter = chapterName || 'Chapter';
+    const groupId = filterGroupId || '33359';
+
+    // Kick off the member-list fetch and the per-event attendee fetches in
+    // parallel. We read the chapter member list directly from the API here
+    // (instead of from `membersList` state) so this function works even when
+    // the page first loads, before any modal has triggered fetchMembers().
+    let chapterMembers, perEvent;
+    try {
+      const { getMembers } = await import('../api/memberService');
+      const [memRes, ...attRes] = await Promise.all([
+        getMembers(groupId),
+        ...items.map(it => getAttendanceMembers(String(it.Id || it.AttendanceID))),
+      ]);
+      chapterMembers = (memRes.data?.MemberDetail?.NewMemberList || []).map(m => ({
+        id: String(m.profileID),
+        name: [m.memberName, m.lastName].filter(Boolean).join(' ').trim(),
+      }));
+      perEvent = items.map((it, idx) => {
+        const mems = attRes[idx].data?.TBAttendanceMemberDetailsResult?.AttendanceMemberResult || [];
+        return {
+          event: it,
+          attendingIds: new Set(mems.map(m => String(m.FK_MemberID))),
+          attendingNames: mems.map(m => ({ id: String(m.FK_MemberID), name: m.MemberName || '' })),
+        };
+      });
+    } catch {
+      alert('Failed to fetch attendance details for the report.');
+      return;
+    }
+
+    // Build the unique member list. Start with the full chapter directory
+    // (so members who never attended still appear with all "No"s, matching
+    // the reference Member_wise.xls). Then merge in any additional names
+    // that showed up in attendance records but aren't in the directory.
+    const memberMap = new Map(); // id -> name
+    chapterMembers.forEach(({ id, name }) => { if (id) memberMap.set(id, name); });
+    perEvent.forEach(({ attendingNames }) => {
+      attendingNames.forEach(({ id, name }) => {
+        if (id && !memberMap.has(id)) memberMap.set(id, name);
+      });
+    });
+    if (memberMap.size === 0) {
+      alert('No members found for this chapter — cannot build the member-wise report.');
+      return;
+    }
+
+    // Sort members alphabetically by name (case-insensitive).
+    const sortedMembers = Array.from(memberMap.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+    // Format event date headers like "Wed, 20 Aug 2025 11:20:00".
+    const fmtEventDate = (raw) => {
+      if (!raw) return '';
+      const d = new Date(raw);
+      if (isNaN(d)) return raw;
+      const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+      const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+      const day = String(d.getDate()).padStart(2,'0');
+      const yr  = d.getFullYear();
+      const hh  = String(d.getHours()).padStart(2,'0');
+      const mm  = String(d.getMinutes()).padStart(2,'0');
+      const ss  = String(d.getSeconds()).padStart(2,'0');
+      return `${wd}, ${day} ${mo} ${yr} ${hh}:${mm}:${ss}`;
+    };
+
+    // Build the HTML table — same shape as the reference Member_wise.xls.
+    const blueHdr = "color:White;background-color:#2d7fc7;";
+    const colCount = perEvent.length + 2; // Member name + N events + Total
+
+    const eventTitleRow = `<tr><th>Event Name</th>` +
+      perEvent.map(p => `<th>${escapeHtml(p.event.AttendanceName || '')}</th>`).join('') +
+      `<th></th></tr>`;
+
+    const eventDateRow = `<tr><th>Member name</th>` +
+      perEvent.map(p => `<th>${escapeHtml(fmtEventDate(p.event.AttendanceDate))}</th>`).join('') +
+      `<th>Total</th></tr>`;
+
+    const memberRows = sortedMembers.map(({ id, name }) => {
+      let total = 0;
+      const cells = perEvent.map(p => {
+        const present = p.attendingIds.has(id);
+        if (present) total += 1;
+        return `<td>${present ? 'Yes' : 'No'}</td>`;
+      }).join('');
+      return `<tr><td>${escapeHtml(name)}</td>${cells}<td>${total}</td></tr>`;
+    }).join('');
+
+    const html =
+      `<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">` +
+      `<font style='font-size:10.0pt; font-family:Calibri;'>` +
+      `<BR><BR><BR>` +
+      `<table border='1' style='width:100%'>` +
+        `<tr><th colspan=${colCount} style='${blueHdr}'>${escapeHtml(chapter)}<br/>&nbsp;</th></tr>` +
+        `<tr><th colspan=${colCount} style='${blueHdr}'>Attendance_Report_Member<br/>&nbsp;</th></tr>` +
+        eventTitleRow +
+        eventDateRow +
+        memberRows +
+      `</table>` +
+      `</font>`;
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Member_wise_${safeFile(chapter)}.xls`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
+
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
 
 
 

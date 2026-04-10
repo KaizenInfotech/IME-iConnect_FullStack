@@ -88,6 +88,7 @@ class ApiConstants {
   static const String eventAddEventNew = 'Event/AddEvent_New';
   static const String eventAnsweringEvent = 'Event/AnsweringEvent';
   static const String eventGetSmsCountDetails = 'Event/Getsmscountdetails';
+  static const String eventGetEventExtras = 'Event/GetEventExtras';
 
   // ─── ANNOUNCEMENT ──────────────────────────────────────
   static const String announcementGetList =
