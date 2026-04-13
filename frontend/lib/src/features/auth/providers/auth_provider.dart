@@ -343,6 +343,7 @@ class AuthProvider extends ChangeNotifier {
       clubName: s.grpName,
       authProfileId: s.memberProfileId?.toString(),
       authGroupId: s.grpid1,
+      mobileNo: _mobileNumber,
     );
 
     // Save the original grpid1 as orgGroupId — this never gets overwritten
@@ -359,6 +360,16 @@ class AuthProvider extends ChangeNotifier {
     }
     if (_loginType != null && _loginType!.isNotEmpty) {
       await LocalStorage.instance.setSessionLoginType(_loginType!);
+    }
+
+    // Save force update info so dashboard can check without re-calling PostOtp
+    if (_loginResult?.latestVersion != null) {
+      await LocalStorage.instance
+          .setString('latest_version', _loginResult!.latestVersion!);
+    }
+    if (_loginResult?.forceUpdateStoreUrl != null) {
+      await LocalStorage.instance
+          .setString('force_update_store_url', _loginResult!.forceUpdateStoreUrl!);
     }
   }
 

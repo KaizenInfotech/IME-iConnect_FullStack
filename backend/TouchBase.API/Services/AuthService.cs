@@ -209,7 +209,9 @@ public class AuthService : IAuthService
             isexists = "1",
             token = token,
             ds = new LoginDs { Table = new List<LoginTable> { loginTable } },
-            latestVersion = _config["AppVersion:LatestVersion"] ?? "1.0.0",
+            latestVersion = string.Equals(request.deviceName, "iOS", StringComparison.OrdinalIgnoreCase)
+                ? _config["AppVersion:IosLatestVersion"] ?? "1.0.0"
+                : _config["AppVersion:AndroidLatestVersion"] ?? "1.0.0",
             forceUpdateStoreUrl = string.Equals(request.deviceName, "iOS", StringComparison.OrdinalIgnoreCase)
                 ? _config["AppVersion:IosStoreUrl"] ?? ""
                 : _config["AppVersion:AndroidStoreUrl"] ?? ""

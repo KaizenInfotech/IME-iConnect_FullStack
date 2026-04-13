@@ -13,6 +13,10 @@ class ApiRequestHelper {
   /// Loaded from SecureStorage on app startup.
   static String? _jwtToken;
 
+  /// Callback invoked when a 401 response is received, indicating
+  /// the session has expired (e.g. another device logged in).
+  static VoidCallback? onSessionExpired;
+
   /// Set the JWT token (call after successful OTP verification).
   static void setJwtToken(String? token) {
     _jwtToken = token;
@@ -63,9 +67,10 @@ class ApiRequestHelper {
         return null;
       }
 
-      // Handle 401 - session expiry
+      // Handle 401 - session expiry (another device logged in)
       if (response.statusCode == 401) {
         debugPrint('Session expired - 401 Unauthorized');
+        onSessionExpired?.call();
         return null;
       }
 

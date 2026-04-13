@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
@@ -75,6 +76,15 @@ class ProfileProvider extends ChangeNotifier {
 
     _isLoadingProfile = false;
     notifyListeners();
+  }
+
+  /// Immediately update the local profile photo path so the UI refreshes
+  /// without waiting for a full API re-fetch.
+  void updateProfilePhoto(String newPhotoPath) {
+    if (_memberProfile != null) {
+      _memberProfile!['member_profile_photo_path'] = newPhotoPath;
+      notifyListeners();
+    }
   }
 
   // ─── BOD Members ─────────────────────────────────────────
@@ -453,10 +463,14 @@ class ProfileProvider extends ChangeNotifier {
           'profile_image',
           imageBytes,
           filename: filename,
+          contentType: MediaType('image', 'jpg'),
         ));
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('uploadProfilePhoto status: ${response.statusCode}');
+      debugPrint('uploadProfilePhoto body: ${response.body}');
 
       if (response.statusCode == 200) {
         final jsonData = json.decode(response.body) as Map<String, dynamic>;
@@ -464,6 +478,7 @@ class ProfileProvider extends ChangeNotifier {
         final uploadResult =
             jsonData['UploadImageResult'] as Map<String, dynamic>?;
         final imagePath = uploadResult?['Imagepath']?.toString();
+        debugPrint('uploadProfilePhoto imagePath: $imagePath');
         _isLoading = false;
         notifyListeners();
         return imagePath;

@@ -26,11 +26,13 @@ public class NotificationService : INotificationService
 {
     private readonly AppDbContext _db;
     private readonly IFcmService _fcmService;
+    private readonly ILogger<NotificationService> _logger;
 
-    public NotificationService(AppDbContext db, IFcmService fcmService)
+    public NotificationService(AppDbContext db, IFcmService fcmService, ILogger<NotificationService> logger)
     {
         _db = db;
         _fcmService = fcmService;
+        _logger = logger;
     }
 
     public async Task SendGroupNotification(int groupId, string type, string title, string message, Dictionary<string, string>? extraData = null)
@@ -42,6 +44,7 @@ public class NotificationService : INotificationService
             .Distinct()
             .ToListAsync();
 
+        _logger.LogInformation("SendGroupNotification: groupId={GroupId}, found {Count} member userIds", groupId, memberUserIds.Count);
         if (!memberUserIds.Any()) return;
 
         // Get device tokens for all members
@@ -49,6 +52,9 @@ public class NotificationService : INotificationService
             .Where(dt => memberUserIds.Contains(dt.UserId) && dt.Token != null)
             .Select(dt => new { dt.Token, dt.Platform, dt.UserId })
             .ToListAsync();
+
+        _logger.LogInformation("SendGroupNotification: found {Count} device tokens. Platforms: {Platforms}",
+            devices.Count, string.Join(", ", devices.Select(d => $"{d.UserId}={d.Platform ?? "null"}")));
 
         // Build FCM data payload matching old notification system format
         var data = new Dictionary<string, string>
@@ -87,6 +93,7 @@ public class NotificationService : INotificationService
             .Select(dt => new { dt.Token, dt.Platform, dt.UserId })
             .ToListAsync();
 
+        _logger.LogInformation("SendAllUsersNotification: found {Count} device tokens", devices.Count);
         if (!devices.Any()) return;
 
         var data = new Dictionary<string, string>

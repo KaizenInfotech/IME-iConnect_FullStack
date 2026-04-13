@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_interceptor.dart';
 import '../../../core/storage/local_storage.dart';
 import '../../../core/storage/secure_storage.dart';
 import '../../../core/theme/app_colors.dart';
@@ -114,6 +115,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Listen for 401 responses (session expired by another device login)
+    ApiRequestHelper.onSessionExpired = _onSessionExpired;
     WidgetsBinding.instance.addPostFrameCallback((_) => _initDashboard());
     _loadVersion();
   }
@@ -121,7 +124,15 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ApiRequestHelper.onSessionExpired = null;
     super.dispose();
+  }
+
+  /// Called when any API returns 401 — another device logged in.
+  void _onSessionExpired() {
+    if (mounted) {
+      _showSessionExpiredDialog();
+    }
   }
 
   /// Android: onResume — refresh notification badge + check session expiry + force update.
@@ -146,6 +157,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   /// Check force update by comparing local app version with server's latestVersion.
+  /// Uses version info saved during login — never calls PostOtp (which would
+  /// overwrite ImeiNo and break session expiry).
   Future<void> _checkForceUpdate() async {
     try {
       // First check if AuthProvider already has the result (from OTP flow)
@@ -155,32 +168,17 @@ class _DashboardScreenState extends State<DashboardScreen>
         return;
       }
 
-      // If landing directly on dashboard (already logged in), call API to get version
+      // Check using version info saved to LocalStorage during login
       final info = await PackageInfo.fromPlatform();
       final currentVersion = info.version;
+      final latestVersion =
+          LocalStorage.instance.getString('latest_version') ?? '';
+      final storeUrl =
+          LocalStorage.instance.getString('force_update_store_url') ?? '';
 
-      final response = await ApiClient.instance.postUrlEncoded(
-        ApiConstants.loginPostOtp,
-        body: {
-          'mobileNo': LocalStorage.instance.getString('session_mobile') ?? '',
-          'deviceToken': await SecureStorage.instance.getDeviceToken() ?? '',
-          'countryCode': LocalStorage.instance.getString('session_country_code') ?? '1',
-          'deviceName': Platform.isIOS ? 'iOS' : 'Android',
-          'imeiNo': '',
-          'versionNo': currentVersion,
-          'loginType': LocalStorage.instance.getString('session_login_type') ?? '',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final body = json.decode(response.body);
-        final data = body['LoginResult'] as Map<String, dynamic>? ?? body;
-        final latestVersion = data['latestVersion']?.toString() ?? '';
-        final storeUrl = data['forceUpdateStoreUrl']?.toString() ?? '';
-
-        if (latestVersion.isNotEmpty && _isVersionSmaller(currentVersion, latestVersion)) {
-          if (mounted) _showForceUpdateDialog(storeUrl);
-        }
+      if (latestVersion.isNotEmpty &&
+          _isVersionSmaller(currentVersion, latestVersion)) {
+        if (mounted) _showForceUpdateDialog(storeUrl);
       }
     } catch (e) {
       debugPrint('Force update check failed: $e');
@@ -463,6 +461,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         body: {
           'MobileNumber': mobileNumber,
           'DeviceToken': deviceToken,
+          'Platform': Platform.isIOS ? 'ios' : 'android',
         },
       );
     } catch (e) {

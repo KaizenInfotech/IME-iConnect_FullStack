@@ -248,6 +248,10 @@ export default function MemberDetailPage() {
         ProfilePicPath: photoPath,
         dob: form.BirthDate || null,
         doa: form.AnniversaryDate || null,
+        membershipId: form.MembershipID || null,
+        membershipGrade: form.MembershipGrade || null,
+        category: form.Category || null,
+        companyName: form.CompanyName || null,
       });
       // Update address and country
       await updateAddress({

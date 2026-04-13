@@ -28,6 +28,10 @@ public class UpdateProfileRequest
     public string? ImageId { get; set; }
     public string? dob { get; set; }
     public string? doa { get; set; }
+    public string? membershipId { get; set; }
+    public string? membershipGrade { get; set; }
+    public string? category { get; set; }
+    public string? companyName { get; set; }
 }
 
 public class UpdatePersonalDetailsRequest

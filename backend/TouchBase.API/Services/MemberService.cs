@@ -155,6 +155,10 @@ public class MemberService : IMemberService
         if (!string.IsNullOrEmpty(request.ProfilePicPath)) profile.ProfilePic = request.ProfilePicPath;
         if (request.dob != null) profile.Dob = request.dob;
         if (request.doa != null) profile.Doa = request.doa;
+        if (request.membershipId != null) profile.ImeiMembershipId = request.membershipId;
+        if (request.membershipGrade != null) profile.MembershipGrade = request.membershipGrade;
+        if (request.category != null) profile.Category = request.category;
+        if (request.companyName != null) profile.CompanyName = request.companyName;
         profile.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return new UpdateResponse { status = "0", message = "success" };
@@ -754,6 +758,8 @@ public class MemberService : IMemberService
         var profile = await _db.MemberProfiles.FindAsync(pid);
         if (profile == null) return new { status = "1", message = "Member not found" };
 
+        var userId = profile.UserId;
+
         // Remove group memberships
         var memberships = await _db.GroupMembers.Where(gm => gm.MemberProfileId == pid).ToListAsync();
         _db.GroupMembers.RemoveRange(memberships);
@@ -770,6 +776,18 @@ public class MemberService : IMemberService
         _db.MemberProfiles.Remove(profile);
         await _db.SaveChangesAsync();
 
+        // If the user has no remaining profiles, delete the user record entirely
+        var remainingProfiles = await _db.MemberProfiles.AnyAsync(mp => mp.UserId == userId);
+        if (!remainingProfiles)
+        {
+            var user = await _db.Users.FindAsync(userId);
+            if (user != null)
+            {
+                _db.Users.Remove(user);
+                await _db.SaveChangesAsync();
+            }
+        }
+
         return new { status = "0", message = "success" };
     }
 
@@ -783,11 +801,30 @@ public class MemberService : IMemberService
         User user;
         if (existingUser != null)
         {
-            // If user still has member profiles, reject as duplicate
             if (existingUser.MemberProfiles.Any())
-                return new { status = "1", message = "Mobile number already exists" };
+            {
+                // Check if any of the existing profiles are still active in a group
+                var profileIds = existingUser.MemberProfiles.Select(mp => mp.Id).ToList();
+                var hasActiveGroupMembership = await _db.GroupMembers
+                    .AnyAsync(gm => profileIds.Contains(gm.MemberProfileId));
 
-            // User exists but profile was deleted — reuse the user record
+                if (hasActiveGroupMembership)
+                    return new { status = "1", message = "Mobile number already exists" };
+
+                // Profiles exist but none belong to any group (orphaned from old deletions)
+                // Clean them up so the member can be re-added
+                foreach (var oldProfile in existingUser.MemberProfiles.ToList())
+                {
+                    var family = await _db.FamilyMembers.Where(fm => fm.MemberProfileId == oldProfile.Id).ToListAsync();
+                    _db.FamilyMembers.RemoveRange(family);
+                    var addresses = await _db.AddressDetails.Where(a => a.MemberProfileId == oldProfile.Id).ToListAsync();
+                    _db.AddressDetails.RemoveRange(addresses);
+                    _db.MemberProfiles.Remove(oldProfile);
+                }
+                await _db.SaveChangesAsync();
+            }
+
+            // User exists but profile was deleted / cleaned up — reuse the user record
             existingUser.FirstName = request.firstName;
             existingUser.MiddleName = request.middleName;
             existingUser.LastName = request.lastName;

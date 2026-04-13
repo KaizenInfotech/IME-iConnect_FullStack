@@ -267,6 +267,24 @@ public class GroupService : IGroupService
     public async Task<object> GetAllGroupListSync(GroupSyncRequest request)
     {
         var uid = int.TryParse(request.masterUID, out var u) ? u : 0;
+
+        // Session expiry check: compare request imeiNo with stored ImeiNo.
+        // When another device logs in (OTP verify), it overwrites User.ImeiNo.
+        // If the requesting device's imeiNo doesn't match, the session is expired.
+        if (!string.IsNullOrEmpty(request.imeiNo))
+        {
+            var user = await _db.Users.FirstOrDefaultAsync(usr => usr.Id == uid);
+            if (user != null && !string.IsNullOrEmpty(user.ImeiNo)
+                && user.ImeiNo != request.imeiNo)
+            {
+                return new
+                {
+                    status = "2", version = "2.3",
+                    message = "Your session has been expired. Please login again."
+                };
+            }
+        }
+
         var groups = await _db.GroupMembers.Include(gm => gm.Group)
             .Where(gm => gm.MemberMainId == u.ToString())
             .Select(gm => new { grpId = gm.GroupId, grpName = gm.Group.GrpName, grpImg = gm.Group.GrpImg, grpType = gm.Group.GrpType, grpProfileId = gm.MemberProfileId, myCategory = gm.MyCategory, isGrpAdmin = gm.IsGrpAdmin })
@@ -428,6 +446,10 @@ public class GroupService : IGroupService
             _db.DocumentReadStatuses.RemoveRange(docStatuses);
         }
 
+        // Collect member profile IDs belonging to this group before removing GroupMembers
+        var groupMemberRecords = await _db.GroupMembers.Where(gm => gm.GroupId == groupId).ToListAsync();
+        var memberProfileIds = groupMemberRecords.Select(gm => gm.MemberProfileId).Distinct().ToList();
+
         // Now delete parent tables
         _db.Albums.RemoveRange(await _db.Albums.Where(a => a.GroupId == groupId).ToListAsync());
         _db.Announcements.RemoveRange(await _db.Announcements.Where(a => a.GroupId == groupId).ToListAsync());
@@ -437,7 +459,7 @@ public class GroupService : IGroupService
         _db.Ebulletins.RemoveRange(await _db.Ebulletins.Where(e => e.GroupId == groupId).ToListAsync());
         _db.Events.RemoveRange(await _db.Events.Where(e => e.GroupId == groupId).ToListAsync());
         _db.Feedbacks.RemoveRange(await _db.Feedbacks.Where(f => f.GroupId == groupId).ToListAsync());
-        _db.GroupMembers.RemoveRange(await _db.GroupMembers.Where(gm => gm.GroupId == groupId).ToListAsync());
+        _db.GroupMembers.RemoveRange(groupMemberRecords);
         _db.GroupModules.RemoveRange(await _db.GroupModules.Where(gm => gm.GroupId == groupId).ToListAsync());
         _db.GroupSettings.RemoveRange(await _db.GroupSettings.Where(gs => gs.GroupId == groupId).ToListAsync());
         _db.LeaderboardEntries.RemoveRange(await _db.LeaderboardEntries.Where(l => l.GroupId == groupId).ToListAsync());
@@ -447,6 +469,45 @@ public class GroupService : IGroupService
         _db.ServiceDirectoryEntries.RemoveRange(await _db.ServiceDirectoryEntries.Where(s => s.GroupId == groupId).ToListAsync());
         _db.SubGroups.RemoveRange(await _db.SubGroups.Where(sg => sg.GroupId == groupId).ToListAsync());
         _db.WebLinks.RemoveRange(await _db.WebLinks.Where(w => w.GroupId == groupId).ToListAsync());
+
+        // Save first so GroupMembers are removed before checking for orphaned profiles
+        await _db.SaveChangesAsync();
+
+        // Delete member profiles and users who no longer belong to any group
+        foreach (var profileId in memberProfileIds)
+        {
+            // Check if this member still belongs to any other group
+            var stillInOtherGroup = await _db.GroupMembers.AnyAsync(gm => gm.MemberProfileId == profileId);
+            if (stillInOtherGroup) continue;
+
+            var profile = await _db.MemberProfiles.FindAsync(profileId);
+            if (profile == null) continue;
+
+            var userId = profile.UserId;
+
+            // Remove family members
+            var family = await _db.FamilyMembers.Where(fm => fm.MemberProfileId == profileId).ToListAsync();
+            _db.FamilyMembers.RemoveRange(family);
+
+            // Remove addresses
+            var addresses = await _db.AddressDetails.Where(a => a.MemberProfileId == profileId).ToListAsync();
+            _db.AddressDetails.RemoveRange(addresses);
+
+            // Remove profile
+            _db.MemberProfiles.Remove(profile);
+            await _db.SaveChangesAsync();
+
+            // If the user has no remaining profiles, delete the user record entirely
+            var remainingProfiles = await _db.MemberProfiles.AnyAsync(mp => mp.UserId == userId);
+            if (!remainingProfiles)
+            {
+                var user = await _db.Users.FindAsync(userId);
+                if (user != null)
+                    _db.Users.Remove(user);
+            }
+        }
+
+        await _db.SaveChangesAsync();
     }
 
     public async Task<object> DeleteSubGroup(string subGroupId)

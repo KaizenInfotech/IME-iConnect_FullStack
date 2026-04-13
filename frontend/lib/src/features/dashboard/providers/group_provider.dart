@@ -61,11 +61,12 @@ class GroupProvider extends ChangeNotifier {
     }
 
     try {
+      final deviceId = await _getDeviceId();
       final response = await ApiClient.instance.post(
         ApiConstants.groupGetAllGroupsList,
         body: {
           'masterUID': masterUid,
-          'imeiNo': '', // iOS: UIDevice.current.identifierForVendor
+          'imeiNo': deviceId,
         },
       );
 
@@ -192,21 +193,45 @@ class GroupProvider extends ChangeNotifier {
 
     try {
       final deviceId = await _getDeviceId();
+      // iOS default: "1970-01-01 00:00:00" when no stored date exists
+      final updatedOn = LocalStorage.instance.sessionLastUpdateDate ??
+          '1970-01-01 00:00:00';
+      final body = {
+        'masterUID': masterUid,
+        'imeiNo': deviceId,
+        'loginType': LocalStorage.instance.sessionLoginType ?? '0',
+        'mobileNo': LocalStorage.instance.sessionMobileNumber ?? '',
+        'countryCode': LocalStorage.instance.sessionLoginType ?? '0',
+        'updatedOn': updatedOn,
+      };
+      debugPrint('checkSessionExpired request: $body');
+
       final response = await ApiClient.instance.post(
         ApiConstants.groupGetAllGroupListSync,
-        body: {
-          'masterUID': masterUid,
-          'imeiNo': deviceId,
-          'loginType': LocalStorage.instance.sessionLoginType ?? '0',
-          'mobileNo': LocalStorage.instance.sessionMobileNumber ?? '',
-          'countryCode': '1',
-          'updatedOn': LocalStorage.instance.sessionLastUpdateDate ?? '',
-        },
+        body: body,
       );
+
+      debugPrint('checkSessionExpired status: ${response.statusCode}');
+      debugPrint('checkSessionExpired body: ${response.body}');
+
+      // V2 API: 401 = session expired (JWT invalidated by another login)
+      if (response.statusCode == 401) {
+        debugPrint('checkSessionExpired: 401 — session expired');
+        return '2';
+      }
 
       if (response.statusCode == 200) {
         final data = _parseResponseBody(response.body);
-        return data?['status']?.toString();
+        final status = data?['status']?.toString();
+        debugPrint('checkSessionExpired result status: $status');
+
+        // Save updatedOn from server for subsequent calls
+        final serverUpdatedOn = data?['updatedOn']?.toString();
+        if (serverUpdatedOn != null && serverUpdatedOn.isNotEmpty) {
+          LocalStorage.instance.setSessionLastUpdateDate(serverUpdatedOn);
+        }
+
+        return status;
       }
     } catch (e) {
       debugPrint('GroupProvider.checkSessionExpired error: $e');
@@ -215,6 +240,7 @@ class GroupProvider extends ChangeNotifier {
   }
 
   /// Android: Settings.Secure.ANDROID_ID / iOS: identifierForVendor
+  /// Returns a unique device identifier for session tracking.
   Future<String> _getDeviceId() async {
     try {
       final deviceInfo = DeviceInfoPlugin();
@@ -223,7 +249,9 @@ class GroupProvider extends ChangeNotifier {
         return iosInfo.identifierForVendor ?? '';
       } else if (Platform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
-        return androidInfo.id;
+        // Use fingerprint as unique device identifier (brand/model/build combo).
+        // androidInfo.id is just Build.ID which can be same across devices.
+        return androidInfo.fingerprint;
       }
     } catch (_) {}
     return '';

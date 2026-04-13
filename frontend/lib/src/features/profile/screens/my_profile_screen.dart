@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -57,6 +60,10 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
   String _dob = '';
   String _doa = '';
   bool _statesSynced = false;
+
+  /// Locally picked image bytes — shown immediately like iOS does
+  /// (ImageProf.image = pickedImage) instead of waiting for server URL.
+  Uint8List? _pickedImageBytes;
 
   @override
   void initState() {
@@ -209,25 +216,50 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
 
     final bytes = await picked.readAsBytes();
 
+    // iOS: ImageProf.image = pickedImage — show picked image immediately
+    setState(() {
+      _pickedImageBytes = bytes;
+    });
+
     if (!mounted) return;
     final provider = context.read<ProfileProvider>();
+    // Use MemProfileId from the fetched profile data if available,
+    // as the server needs the actual profile ID to link the photo.
+    final memProfileId =
+        provider.memberProfile?['MemProfileId']?.toString() ??
+            widget.profileId;
+    debugPrint('_pickAndUploadPhoto: using profileId=$memProfileId '
+        '(widget.profileId=${widget.profileId})');
     final imagePath = await provider.uploadProfilePhoto(
-      profileId: widget.profileId,
+      profileId: memProfileId,
       groupId: widget.groupId,
       imageBytes: bytes.toList(),
     );
 
     if (!mounted) return;
     if (imagePath != null) {
+      // Clear cached images so future loads get the new photo
+      final oldPic = provider.memberProfile?['member_profile_photo_path']
+          ?.toString();
+      if (oldPic != null && oldPic.isNotEmpty) {
+        await DefaultCacheManager().removeFile(oldPic.replaceAll(' ', '%20'));
+      }
+      await DefaultCacheManager().removeFile(imagePath.replaceAll(' ', '%20'));
+      imageCache.clear();
+      imageCache.clearLiveImages();
+
+      if (!mounted) return;
+      // Update local profile data with the new image path
+      provider.updateProfilePhoto(imagePath);
+
       // Store in local storage for dashboard
       LocalStorage.instance.setString('profileImg', imagePath);
       CommonToast.success(context, 'Image changed successfully');
-      // Refresh profile
-      provider.fetchMemberProfile(
-        profileId: widget.profileId,
-        groupId: widget.groupId,
-      );
     } else {
+      // Upload failed — revert the local preview
+      setState(() {
+        _pickedImageBytes = null;
+      });
       CommonToast.error(context, 'Failed to upload image');
     }
   }
@@ -404,10 +436,12 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                         child: CircleAvatar(
                           radius: 50,
                           backgroundColor: AppColors.border,
-                          backgroundImage: hasPic
-                              ? CachedNetworkImageProvider(encodedPic!)
-                              : null,
-                          child: !hasPic
+                          backgroundImage: _pickedImageBytes != null
+                              ? MemoryImage(_pickedImageBytes!)
+                              : hasPic
+                                  ? CachedNetworkImageProvider(encodedPic!)
+                                  : null,
+                          child: (_pickedImageBytes == null && !hasPic)
                               ? const Icon(Icons.person,
                                   size: 50, color: AppColors.grayMedium)
                               : null,
