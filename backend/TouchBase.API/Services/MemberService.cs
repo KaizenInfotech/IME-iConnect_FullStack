@@ -153,12 +153,15 @@ public class MemberService : IMemberService
             if (profile.User != null) profile.User.Email = request.memberEmailid;
         }
         if (!string.IsNullOrEmpty(request.ProfilePicPath)) profile.ProfilePic = request.ProfilePicPath;
-        if (request.dob != null) profile.Dob = request.dob;
-        if (request.doa != null) profile.Doa = request.doa;
-        if (request.membershipId != null) profile.ImeiMembershipId = request.membershipId;
-        if (request.membershipGrade != null) profile.MembershipGrade = request.membershipGrade;
-        if (request.category != null) profile.Category = request.category;
-        if (request.companyName != null) profile.CompanyName = request.companyName;
+        // Allow null to clear these fields (null → empty string in DB)
+        profile.Dob = request.dob ?? "";
+        profile.Doa = request.doa ?? "";
+        profile.ImeiMembershipId = request.membershipId ?? profile.ImeiMembershipId;
+        profile.MembershipGrade = request.membershipGrade ?? profile.MembershipGrade;
+        profile.Category = request.category ?? profile.Category;
+        profile.CompanyName = request.companyName ?? "";
+        profile.BloodGroup = request.bloodGroup ?? "";
+        profile.SecondaryMobileNo = request.secondaryMobileNo ?? "";
         profile.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return new UpdateResponse { status = "0", message = "success" };

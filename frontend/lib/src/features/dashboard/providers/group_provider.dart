@@ -1,13 +1,12 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/local_storage.dart';
+import '../../../core/utils/device_id_helper.dart';
 import '../models/group_result.dart';
 
 /// Group state management.
@@ -61,7 +60,7 @@ class GroupProvider extends ChangeNotifier {
     }
 
     try {
-      final deviceId = await _getDeviceId();
+      final deviceId = await DeviceIdHelper.getDeviceId();
       final response = await ApiClient.instance.post(
         ApiConstants.groupGetAllGroupsList,
         body: {
@@ -192,7 +191,7 @@ class GroupProvider extends ChangeNotifier {
     if (masterUid == null || masterUid.isEmpty) return null;
 
     try {
-      final deviceId = await _getDeviceId();
+      final deviceId = await DeviceIdHelper.getDeviceId();
       // iOS default: "1970-01-01 00:00:00" when no stored date exists
       final updatedOn = LocalStorage.instance.sessionLastUpdateDate ??
           '1970-01-01 00:00:00';
@@ -239,25 +238,7 @@ class GroupProvider extends ChangeNotifier {
     return null;
   }
 
-  /// Android: Settings.Secure.ANDROID_ID / iOS: identifierForVendor
-  /// Returns a unique device identifier for session tracking.
-  Future<String> _getDeviceId() async {
-    try {
-      final deviceInfo = DeviceInfoPlugin();
-      if (Platform.isIOS) {
-        final iosInfo = await deviceInfo.iosInfo;
-        return iosInfo.identifierForVendor ?? '';
-      } else if (Platform.isAndroid) {
-        final androidInfo = await deviceInfo.androidInfo;
-        // Use fingerprint as unique device identifier (brand/model/build combo).
-        // androidInfo.id is just Build.ID which can be same across devices.
-        return androidInfo.fingerprint;
-      }
-    } catch (_) {}
-    return '';
-  }
-
-  // ─── CLEAR STATE ───────────────────────────────────────
+// ─── CLEAR STATE ───────────────────────────────────────
   void clear() {
     _groupResult = null;
     _allGroups = [];

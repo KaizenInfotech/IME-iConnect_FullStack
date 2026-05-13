@@ -11,6 +11,7 @@ public class DirectoryListRequest
 }
 
 public class MemberDetailRequest
+
 {
     public string? memberProfileId { get; set; }
     public string? memberProfID { get; set; }
@@ -32,6 +33,8 @@ public class UpdateProfileRequest
     public string? membershipGrade { get; set; }
     public string? category { get; set; }
     public string? companyName { get; set; }
+    public string? bloodGroup { get; set; }
+    public string? secondaryMobileNo { get; set; }
 }
 
 public class UpdatePersonalDetailsRequest

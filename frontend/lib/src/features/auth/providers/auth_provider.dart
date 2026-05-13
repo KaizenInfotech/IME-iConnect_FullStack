@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -10,6 +9,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_interceptor.dart';
 import '../../../core/storage/local_storage.dart';
 import '../../../core/storage/secure_storage.dart';
+import '../../../core/utils/device_id_helper.dart';
 import '../models/login_result.dart';
 
 /// Port of iOS WebserviceClass auth methods:
@@ -131,7 +131,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       final deviceToken =
           await SecureStorage.instance.getDeviceToken() ?? '';
-      final deviceId = await _getDeviceId();
+      final deviceId = await DeviceIdHelper.getDeviceId();
       final versionNo = await _getVersionNumber();
 
       // iOS: params = ["mobileNo": mobileNumber, "deviceToken": ...,
@@ -498,22 +498,7 @@ class AuthProvider extends ChangeNotifier {
     return null;
   }
 
-  /// iOS: UIDevice.current.identifierForVendor!.uuidString
-  Future<String> _getDeviceId() async {
-    try {
-      final deviceInfo = DeviceInfoPlugin();
-      if (Platform.isIOS) {
-        final iosInfo = await deviceInfo.iosInfo;
-        return iosInfo.identifierForVendor ?? '';
-      } else if (Platform.isAndroid) {
-        final androidInfo = await deviceInfo.androidInfo;
-        return androidInfo.id;
-      }
-    } catch (_) {}
-    return '';
-  }
-
-  /// iOS: global verSion variable (app version).
+/// iOS: global verSion variable (app version).
   Future<String> _getVersionNumber() async {
     try {
       final info = await PackageInfo.fromPlatform();

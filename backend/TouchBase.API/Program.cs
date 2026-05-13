@@ -148,6 +148,25 @@ app.UseStaticFiles(); // For serving uploaded files from wwwroot
 
 app.UseCors("AllowAll");
 
+// Short-circuit OPTIONS preflights so they never reach auth or controllers.
+// Prevents 500 errors caused by IIS WebDAV or missing-token exceptions.
+app.Use(async (ctx, next) =>
+{
+    if (HttpMethods.IsOptions(ctx.Request.Method))
+    {
+        var origin = ctx.Request.Headers["Origin"].ToString();
+        if (!string.IsNullOrEmpty(origin))
+            ctx.Response.Headers["Access-Control-Allow-Origin"] = origin;
+        ctx.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+        ctx.Response.Headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
+        ctx.Response.Headers["Access-Control-Max-Age"] = "600";
+        ctx.Response.Headers["Vary"] = "Origin";
+        ctx.Response.StatusCode = StatusCodes.Status204NoContent;
+        return;
+    }
+    await next();
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -249,9 +249,11 @@ export default function MemberDetailPage() {
         dob: form.BirthDate || null,
         doa: form.AnniversaryDate || null,
         membershipId: form.MembershipID || null,
-        membershipGrade: form.MembershipGrade || null,
-        category: form.Category || null,
+        membershipGrade: form.MembershipGrade && form.MembershipGrade !== '- Select -' ? form.MembershipGrade : null,
+        category: form.Category && form.Category !== '- Select -' ? form.Category : null,
         companyName: form.CompanyName || null,
+        bloodGroup: form.BloodGroup && form.BloodGroup !== '- Select -' ? form.BloodGroup : null,
+        secondaryMobileNo: form.SecondaryMobile || null,
       });
       // Update address and country
       await updateAddress({

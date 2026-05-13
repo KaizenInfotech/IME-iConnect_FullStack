@@ -22,7 +22,7 @@ export default function MembersPage() {
   const [changeForm, setChangeForm] = useState({ newMobile: '', newEmail: '' });
   const [changeSaving, setChangeSaving] = useState(false);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [filterGroupId]);
 
   useEffect(() => {
     if (!searchTerm.trim()) {
