@@ -39,6 +39,13 @@ public class MemberController : ControllerBase
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
 
+    [HttpPost("GetAllMembersPaged")]
+    public async Task<IActionResult> GetAllMembersPaged([FromBody] AllMembersPagedRequest request)
+    {
+        try { return Ok(await _memberService.GetAllMembersPaged(request)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+
     // Note: lowercase 'member' in route to match Flutter ApiConstants
     [HttpPost("/api/member/UpdateProfileDetails")]
     public async Task<IActionResult> UpdateProfileDetails([FromBody] UpdatePersonalDetailsRequest request)

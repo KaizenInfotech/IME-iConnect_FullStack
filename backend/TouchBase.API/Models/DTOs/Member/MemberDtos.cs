@@ -85,6 +85,40 @@ public class MemberSyncRequest
     public string? updatedOn { get; set; }
 }
 
+public class AllMembersPagedRequest
+{
+    public string? grpID { get; set; }
+    public string? searchText { get; set; }
+    public int pageNo { get; set; } = 1;
+    public int pageSize { get; set; } = 15;
+}
+
+public class AllMembersPagedResponse
+{
+    public string? status { get; set; }
+    public string? message { get; set; }
+    public int totalCount { get; set; }
+    public int totalPages { get; set; }
+    public int currentPage { get; set; }
+    public int pageSize { get; set; }
+    public List<AllMembersPagedItemDto>? items { get; set; }
+}
+
+public class AllMembersPagedItemDto
+{
+    public string? masterID { get; set; }
+    public string? profileID { get; set; }
+    public string? GroupId { get; set; }
+    public string? GrpName { get; set; }
+    public string? memberName { get; set; }
+    public string? middleName { get; set; }
+    public string? lastName { get; set; }
+    public string? memberEmail { get; set; }
+    public string? memberMobile { get; set; }
+    public string? profilePic { get; set; }
+    public string? member_IMEI_id { get; set; }
+}
+
 public class UpdateMemberRequest
 {
     public string? mobile_num_hide { get; set; }

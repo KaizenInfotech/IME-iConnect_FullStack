@@ -153,18 +153,78 @@ public class MemberService : IMemberService
             if (profile.User != null) profile.User.Email = request.memberEmailid;
         }
         if (!string.IsNullOrEmpty(request.ProfilePicPath)) profile.ProfilePic = request.ProfilePicPath;
-        // Allow null to clear these fields (null → empty string in DB)
-        profile.Dob = request.dob ?? "";
-        profile.Doa = request.doa ?? "";
-        profile.ImeiMembershipId = request.membershipId ?? profile.ImeiMembershipId;
-        profile.MembershipGrade = request.membershipGrade ?? profile.MembershipGrade;
-        profile.Category = request.category ?? profile.Category;
-        profile.CompanyName = request.companyName ?? "";
-        profile.BloodGroup = request.bloodGroup ?? "";
-        profile.SecondaryMobileNo = request.secondaryMobileNo ?? "";
+        // Contract: null = field not sent (preserve existing); "" = explicit clear; any value = update.
+        if (request.dob != null) profile.Dob = request.dob;
+        if (request.doa != null) profile.Doa = request.doa;
+        if (request.membershipId != null) profile.ImeiMembershipId = request.membershipId;
+        if (request.membershipGrade != null) profile.MembershipGrade = request.membershipGrade;
+        if (request.category != null) profile.Category = request.category;
+        if (request.companyName != null) profile.CompanyName = request.companyName;
+        if (request.bloodGroup != null) profile.BloodGroup = request.bloodGroup;
+        if (request.secondaryMobileNo != null) profile.SecondaryMobileNo = request.secondaryMobileNo;
         profile.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return new UpdateResponse { status = "0", message = "success" };
+    }
+
+    public async Task<AllMembersPagedResponse> GetAllMembersPaged(AllMembersPagedRequest request)
+    {
+        var pageNo = request.pageNo > 0 ? request.pageNo : 1;
+        var pageSize = request.pageSize > 0 ? request.pageSize : 15;
+
+        var query = _db.GroupMembers
+            .Include(gm => gm.MemberProfile).ThenInclude(mp => mp.User)
+            .Include(gm => gm.Group)
+            .Where(gm => gm.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(request.grpID) && int.TryParse(request.grpID, out var gid) && gid > 0)
+            query = query.Where(gm => gm.GroupId == gid);
+
+        if (!string.IsNullOrWhiteSpace(request.searchText))
+        {
+            var s = request.searchText.Trim();
+            query = query.Where(gm =>
+                (gm.MemberProfile.MemberName != null && gm.MemberProfile.MemberName.Contains(s)) ||
+                (gm.MemberProfile.User.FirstName != null && gm.MemberProfile.User.FirstName.Contains(s)) ||
+                (gm.MemberProfile.User.MiddleName != null && gm.MemberProfile.User.MiddleName.Contains(s)) ||
+                (gm.MemberProfile.User.LastName != null && gm.MemberProfile.User.LastName.Contains(s)) ||
+                (gm.MemberProfile.MemberEmail != null && gm.MemberProfile.MemberEmail.Contains(s)) ||
+                (gm.MemberProfile.MemberMobile != null && gm.MemberProfile.MemberMobile.Contains(s)) ||
+                (gm.MemberProfile.ImeiMembershipId != null && gm.MemberProfile.ImeiMembershipId.Contains(s)));
+        }
+
+        var totalCount = await query.CountAsync();
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+        var items = await query
+            .OrderBy(gm => gm.MemberProfile.MemberName)
+            .Skip((pageNo - 1) * pageSize)
+            .Take(pageSize)
+            .Select(gm => new AllMembersPagedItemDto
+            {
+                masterID = gm.MemberProfile.UserId.ToString(),
+                profileID = gm.MemberProfileId.ToString(),
+                GroupId = gm.GroupId.ToString(),
+                GrpName = gm.Group.GrpName,
+                memberName = gm.MemberProfile.User.FirstName ?? gm.MemberProfile.MemberName,
+                middleName = gm.MemberProfile.User.MiddleName ?? "",
+                lastName = gm.MemberProfile.User.LastName ?? "",
+                memberEmail = gm.MemberProfile.MemberEmail,
+                memberMobile = (gm.MemberProfile.CountryCode != null ? "+" + gm.MemberProfile.CountryCode + " " : "") + gm.MemberProfile.MemberMobile,
+                profilePic = gm.MemberProfile.ProfilePic,
+                member_IMEI_id = gm.MemberProfile.ImeiMembershipId ?? ""
+            }).ToListAsync();
+
+        return new AllMembersPagedResponse
+        {
+            status = "0",
+            message = "success",
+            totalCount = totalCount,
+            totalPages = totalPages,
+            currentPage = pageNo,
+            pageSize = pageSize,
+            items = items
+        };
     }
 
     public async Task<object> GetMemberListSync(MemberSyncRequest request)

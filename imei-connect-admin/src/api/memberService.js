@@ -3,6 +3,9 @@ import api from './axiosInstance';
 export const getMembers = (grpID, updatedOn = '1970-01-01 00:00:00') =>
   api.post('/Member/GetMemberListSync', { grpID, updatedOn });
 
+export const getAllMembersPaged = ({ pageNo = 1, pageSize = 15, searchText = '', grpID = '' } = {}) =>
+  api.post('/Member/GetAllMembersPaged', { pageNo, pageSize, searchText, grpID });
+
 export const getMember = (memberProfileId, groupId) =>
   api.get(`/Member/GetMemberDetails?MemProfileId=${memberProfileId}&GrpID=${groupId}`);
 

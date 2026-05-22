@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
-import { getMembers, deleteMember } from '../api/memberService';
+import { getAllMembersPaged, deleteMember } from '../api/memberService';
 
 const PAGE_SIZE = 15;
 
@@ -10,84 +10,72 @@ export default function MembersPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const filterGroupId = searchParams.get('groupId');
-  const [allMembers, setAllMembers] = useState([]);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [pageNo, setPageNo] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [error, setError] = useState('');
   const [chapterName, setChapterName] = useState('National Admin');
   const [changeTarget, setChangeTarget] = useState(null);
   const [changeForm, setChangeForm] = useState({ newMobile: '', newEmail: '' });
   const [changeSaving, setChangeSaving] = useState(false);
+  const isFirstLoad = useRef(true);
 
-  useEffect(() => { fetchData(); }, [filterGroupId]);
-
+  // Debounce search input → searchTerm (reset to page 1 on change)
   useEffect(() => {
-    if (!searchTerm.trim()) {
-      setMembers(allMembers);
-    } else {
-      const q = searchTerm.toLowerCase();
-      setMembers(allMembers.filter(m =>
-        (m.MemberName || m.memberName || '').toLowerCase().includes(q) ||
-        (m.MemberEmail || m.memberEmail || '').toLowerCase().includes(q) ||
-        (m.MemberMobile || m.memberMobile || '').includes(q) ||
-        (m.member_IMEI_id || m.MembershipId || m.membershipId || '').toString().toLowerCase().includes(q)
-      ));
-    }
-    setPageNo(1);
-  }, [searchTerm, allMembers]);
+    const t = setTimeout(() => {
+      setSearchTerm(searchInput);
+      setPageNo(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  // Reset page when chapter filter changes
+  useEffect(() => { setPageNo(1); }, [filterGroupId]);
+
+  const fetchPage = async ({ silent = false } = {}) => {
+    if (!silent && isFirstLoad.current) setLoading(true);
     try {
-      if (filterGroupId) {
-        // Fetch members for specific chapter only
-        const memRes = await getMembers(filterGroupId);
-        const memberList = memRes.data?.MemberDetail?.NewMemberList || [];
-        const grpName = memberList[0]?.GrpName || '';
-        if (grpName) setChapterName(grpName);
-        memberList.forEach(m => { m.GroupName = grpName; m.GrpName = grpName; m.GroupId = filterGroupId; });
-        setAllMembers(memberList);
-        setMembers(memberList);
-      } else {
-        // Get all chapters/branches via GetClubList
-        const { getClubList } = await import('../api/groupService');
-        const clubRes = await getClubList();
-        const clubs = clubRes.data?.TBGetClubResult?.ClubResult?.Table || [];
-
-        // Fetch members for each chapter
-        let allMems = [];
-        for (const c of clubs) {
-          const gid = c.GroupId;
-          const grpName = c.group_name || '';
-          try {
-            const memRes = await getMembers(String(gid));
-            const memberList = memRes.data?.MemberDetail?.NewMemberList || [];
-            memberList.forEach(m => { m.GroupName = grpName; m.GrpName = grpName; m.GroupId = gid; });
-            allMems = allMems.concat(memberList);
-          } catch {}
-        }
-        setAllMembers(allMems);
-        setMembers(allMems);
-      }
-    } catch { setError('Failed to load members'); }
-    finally { setLoading(false); }
+      const res = await getAllMembersPaged({
+        pageNo,
+        pageSize: PAGE_SIZE,
+        searchText: searchTerm.trim(),
+        grpID: filterGroupId || '',
+      });
+      const data = res.data || {};
+      const items = data.items || [];
+      setMembers(items);
+      setTotalCount(data.totalCount || 0);
+      setTotalPages(data.totalPages || 0);
+      if (filterGroupId && items[0]?.GrpName) setChapterName(items[0].GrpName);
+    } catch {
+      setError('Failed to load members');
+    } finally {
+      setLoading(false);
+      isFirstLoad.current = false;
+    }
   };
+
+  // Fetch on page / search / chapter change
+  useEffect(() => {
+    fetchPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageNo, searchTerm, filterGroupId]);
 
   const handleDelete = async () => {
     try {
       const pid = deleteTarget.profileID || deleteTarget.masterID || deleteTarget.Id || deleteTarget.id;
       await deleteMember(pid);
       setDeleteTarget(null);
-      fetchData();
+      fetchPage({ silent: true });
     } catch { setError('Delete failed'); }
   };
 
-  // Pagination
-  const totalPages = Math.ceil(members.length / PAGE_SIZE);
-  const paginatedMembers = members.slice((pageNo - 1) * PAGE_SIZE, pageNo * PAGE_SIZE);
+  const paginatedMembers = members;
 
   const renderPagination = () => {
     if (totalPages <= 1) return null;
@@ -140,13 +128,13 @@ export default function MembersPage() {
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {/* Member Count */}
           <span style={{ fontSize: '13px', color: '#1a297d', fontWeight: 'bold' }}>
-            Total: {members.length}
+            Total: {totalCount}
           </span>
           {/* Search */}
           <input
             type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search"
             style={{
               height: '32px', border: '1px solid #ccc', borderRadius: '4px',
@@ -384,7 +372,7 @@ export default function MembersPage() {
                     });
                     alert('Contact updated successfully');
                     setChangeTarget(null);
-                    fetchData();
+                    fetchPage({ silent: true });
                   } catch { alert('Update failed'); }
                   finally { setChangeSaving(false); }
                 }}

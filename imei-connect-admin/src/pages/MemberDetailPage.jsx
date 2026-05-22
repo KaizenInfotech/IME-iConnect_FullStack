@@ -246,14 +246,16 @@ export default function MemberDetailPage() {
         memberMobile: form.Mobile,
         memberEmailid: form.Email,
         ProfilePicPath: photoPath,
-        dob: form.BirthDate || null,
-        doa: form.AnniversaryDate || null,
-        membershipId: form.MembershipID || null,
-        membershipGrade: form.MembershipGrade && form.MembershipGrade !== '- Select -' ? form.MembershipGrade : null,
-        category: form.Category && form.Category !== '- Select -' ? form.Category : null,
-        companyName: form.CompanyName || null,
-        bloodGroup: form.BloodGroup && form.BloodGroup !== '- Select -' ? form.BloodGroup : null,
-        secondaryMobileNo: form.SecondaryMobile || null,
+        // Send "" to explicitly clear a field; null/omit means "not changed".
+        // Admin always sends current form state, so empty string = user cleared it.
+        dob: form.BirthDate || '',
+        doa: form.AnniversaryDate || '',
+        membershipId: form.MembershipID || '',
+        membershipGrade: form.MembershipGrade && form.MembershipGrade !== '- Select -' ? form.MembershipGrade : '',
+        category: form.Category && form.Category !== '- Select -' ? form.Category : '',
+        companyName: form.CompanyName || '',
+        bloodGroup: form.BloodGroup && form.BloodGroup !== '- Select -' ? form.BloodGroup : '',
+        secondaryMobileNo: form.SecondaryMobile || '',
       });
       // Update address and country
       await updateAddress({

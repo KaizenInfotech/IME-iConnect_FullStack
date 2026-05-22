@@ -107,6 +107,7 @@ public interface IMemberService
     Task<object> GetMemberDetails(string? memProfileId, string? grpId);
     Task<object> DeleteMember(string memberProfileId);
     Task<object> AddMember(WebAddMemberRequest request);
+    Task<AllMembersPagedResponse> GetAllMembersPaged(AllMembersPagedRequest request);
 }
 
 public interface IEventService
