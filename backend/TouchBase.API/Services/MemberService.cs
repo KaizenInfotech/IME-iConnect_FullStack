@@ -171,49 +171,99 @@ public class MemberService : IMemberService
     {
         var pageNo = request.pageNo > 0 ? request.pageNo : 1;
         var pageSize = request.pageSize > 0 ? request.pageSize : 15;
+        var s = string.IsNullOrWhiteSpace(request.searchText) ? null : request.searchText.Trim();
+        var hasGroup = !string.IsNullOrWhiteSpace(request.grpID) && int.TryParse(request.grpID, out var gid) && gid > 0;
 
-        var query = _db.GroupMembers
-            .Include(gm => gm.MemberProfile).ThenInclude(mp => mp.User)
-            .Include(gm => gm.Group)
-            .Where(gm => gm.IsActive);
+        // Chapter view: query GroupMembers (one row per member in that chapter).
+        // All-members view: query MemberProfiles directly so each member appears once
+        // regardless of how many groups they belong to; pick their first active group
+        // for display.
+        int totalCount;
+        List<AllMembersPagedItemDto> items;
 
-        if (!string.IsNullOrWhiteSpace(request.grpID) && int.TryParse(request.grpID, out var gid) && gid > 0)
-            query = query.Where(gm => gm.GroupId == gid);
-
-        if (!string.IsNullOrWhiteSpace(request.searchText))
+        if (hasGroup)
         {
-            var s = request.searchText.Trim();
-            query = query.Where(gm =>
-                (gm.MemberProfile.MemberName != null && gm.MemberProfile.MemberName.Contains(s)) ||
-                (gm.MemberProfile.User.FirstName != null && gm.MemberProfile.User.FirstName.Contains(s)) ||
-                (gm.MemberProfile.User.MiddleName != null && gm.MemberProfile.User.MiddleName.Contains(s)) ||
-                (gm.MemberProfile.User.LastName != null && gm.MemberProfile.User.LastName.Contains(s)) ||
-                (gm.MemberProfile.MemberEmail != null && gm.MemberProfile.MemberEmail.Contains(s)) ||
-                (gm.MemberProfile.MemberMobile != null && gm.MemberProfile.MemberMobile.Contains(s)) ||
-                (gm.MemberProfile.ImeiMembershipId != null && gm.MemberProfile.ImeiMembershipId.Contains(s)));
+            int.TryParse(request.grpID, out var groupId);
+            var query = _db.GroupMembers
+                .Include(gm => gm.MemberProfile).ThenInclude(mp => mp.User)
+                .Include(gm => gm.Group)
+                .Where(gm => gm.IsActive && gm.GroupId == groupId);
+
+            if (s != null)
+            {
+                query = query.Where(gm =>
+                    (gm.MemberProfile.MemberName != null && gm.MemberProfile.MemberName.Contains(s)) ||
+                    (gm.MemberProfile.User.FirstName != null && gm.MemberProfile.User.FirstName.Contains(s)) ||
+                    (gm.MemberProfile.User.MiddleName != null && gm.MemberProfile.User.MiddleName.Contains(s)) ||
+                    (gm.MemberProfile.User.LastName != null && gm.MemberProfile.User.LastName.Contains(s)) ||
+                    (gm.MemberProfile.MemberEmail != null && gm.MemberProfile.MemberEmail.Contains(s)) ||
+                    (gm.MemberProfile.MemberMobile != null && gm.MemberProfile.MemberMobile.Contains(s)) ||
+                    (gm.MemberProfile.ImeiMembershipId != null && gm.MemberProfile.ImeiMembershipId.Contains(s)));
+            }
+
+            totalCount = await query.CountAsync();
+            items = await query
+                .OrderBy(gm => gm.MemberProfile.MemberName)
+                .ThenBy(gm => gm.MemberProfileId)
+                .Skip((pageNo - 1) * pageSize)
+                .Take(pageSize)
+                .Select(gm => new AllMembersPagedItemDto
+                {
+                    masterID = gm.MemberProfile.UserId.ToString(),
+                    profileID = gm.MemberProfileId.ToString(),
+                    GroupId = gm.GroupId.ToString(),
+                    GrpName = gm.Group.GrpName,
+                    memberName = gm.MemberProfile.User.FirstName ?? gm.MemberProfile.MemberName,
+                    middleName = gm.MemberProfile.User.MiddleName ?? "",
+                    lastName = gm.MemberProfile.User.LastName ?? "",
+                    memberEmail = gm.MemberProfile.MemberEmail,
+                    memberMobile = (gm.MemberProfile.CountryCode != null ? "+" + gm.MemberProfile.CountryCode + " " : "") + gm.MemberProfile.MemberMobile,
+                    profilePic = gm.MemberProfile.ProfilePic,
+                    member_IMEI_id = gm.MemberProfile.ImeiMembershipId ?? ""
+                }).ToListAsync();
+        }
+        else
+        {
+            var query = _db.MemberProfiles
+                .Include(mp => mp.User)
+                .Include(mp => mp.GroupMemberships).ThenInclude(gm => gm.Group)
+                .Where(mp => mp.GroupMemberships.Any(gm => gm.IsActive));
+
+            if (s != null)
+            {
+                query = query.Where(mp =>
+                    (mp.MemberName != null && mp.MemberName.Contains(s)) ||
+                    (mp.User.FirstName != null && mp.User.FirstName.Contains(s)) ||
+                    (mp.User.MiddleName != null && mp.User.MiddleName.Contains(s)) ||
+                    (mp.User.LastName != null && mp.User.LastName.Contains(s)) ||
+                    (mp.MemberEmail != null && mp.MemberEmail.Contains(s)) ||
+                    (mp.MemberMobile != null && mp.MemberMobile.Contains(s)) ||
+                    (mp.ImeiMembershipId != null && mp.ImeiMembershipId.Contains(s)));
+            }
+
+            totalCount = await query.CountAsync();
+            items = await query
+                .OrderBy(mp => mp.MemberName)
+                .ThenBy(mp => mp.Id)
+                .Skip((pageNo - 1) * pageSize)
+                .Take(pageSize)
+                .Select(mp => new AllMembersPagedItemDto
+                {
+                    masterID = mp.UserId.ToString(),
+                    profileID = mp.Id.ToString(),
+                    GroupId = mp.GroupMemberships.Where(gm => gm.IsActive).Select(gm => gm.GroupId.ToString()).FirstOrDefault(),
+                    GrpName = mp.GroupMemberships.Where(gm => gm.IsActive).Select(gm => gm.Group.GrpName).FirstOrDefault(),
+                    memberName = mp.User.FirstName ?? mp.MemberName,
+                    middleName = mp.User.MiddleName ?? "",
+                    lastName = mp.User.LastName ?? "",
+                    memberEmail = mp.MemberEmail,
+                    memberMobile = (mp.CountryCode != null ? "+" + mp.CountryCode + " " : "") + mp.MemberMobile,
+                    profilePic = mp.ProfilePic,
+                    member_IMEI_id = mp.ImeiMembershipId ?? ""
+                }).ToListAsync();
         }
 
-        var totalCount = await query.CountAsync();
         var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
-
-        var items = await query
-            .OrderBy(gm => gm.MemberProfile.MemberName)
-            .Skip((pageNo - 1) * pageSize)
-            .Take(pageSize)
-            .Select(gm => new AllMembersPagedItemDto
-            {
-                masterID = gm.MemberProfile.UserId.ToString(),
-                profileID = gm.MemberProfileId.ToString(),
-                GroupId = gm.GroupId.ToString(),
-                GrpName = gm.Group.GrpName,
-                memberName = gm.MemberProfile.User.FirstName ?? gm.MemberProfile.MemberName,
-                middleName = gm.MemberProfile.User.MiddleName ?? "",
-                lastName = gm.MemberProfile.User.LastName ?? "",
-                memberEmail = gm.MemberProfile.MemberEmail,
-                memberMobile = (gm.MemberProfile.CountryCode != null ? "+" + gm.MemberProfile.CountryCode + " " : "") + gm.MemberProfile.MemberMobile,
-                profilePic = gm.MemberProfile.ProfilePic,
-                member_IMEI_id = gm.MemberProfile.ImeiMembershipId ?? ""
-            }).ToListAsync();
 
         return new AllMembersPagedResponse
         {

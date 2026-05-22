@@ -23,7 +23,7 @@ export default function MembersPage() {
   const [changeTarget, setChangeTarget] = useState(null);
   const [changeForm, setChangeForm] = useState({ newMobile: '', newEmail: '' });
   const [changeSaving, setChangeSaving] = useState(false);
-  const isFirstLoad = useRef(true);
+  const reqIdRef = useRef(0);
 
   // Debounce search input → searchTerm (reset to page 1 on change)
   useEffect(() => {
@@ -37,8 +37,9 @@ export default function MembersPage() {
   // Reset page when chapter filter changes
   useEffect(() => { setPageNo(1); }, [filterGroupId]);
 
-  const fetchPage = async ({ silent = false } = {}) => {
-    if (!silent && isFirstLoad.current) setLoading(true);
+  const fetchPage = async () => {
+    const myReqId = ++reqIdRef.current;
+    setLoading(true);
     try {
       const res = await getAllMembersPaged({
         pageNo,
@@ -46,6 +47,7 @@ export default function MembersPage() {
         searchText: searchTerm.trim(),
         grpID: filterGroupId || '',
       });
+      if (myReqId !== reqIdRef.current) return; // stale response, a newer fetch is in flight
       const data = res.data || {};
       const items = data.items || [];
       setMembers(items);
@@ -53,10 +55,9 @@ export default function MembersPage() {
       setTotalPages(data.totalPages || 0);
       if (filterGroupId && items[0]?.GrpName) setChapterName(items[0].GrpName);
     } catch {
-      setError('Failed to load members');
+      if (myReqId === reqIdRef.current) setError('Failed to load members');
     } finally {
-      setLoading(false);
-      isFirstLoad.current = false;
+      if (myReqId === reqIdRef.current) setLoading(false);
     }
   };
 
@@ -71,7 +72,7 @@ export default function MembersPage() {
       const pid = deleteTarget.profileID || deleteTarget.masterID || deleteTarget.Id || deleteTarget.id;
       await deleteMember(pid);
       setDeleteTarget(null);
-      fetchPage({ silent: true });
+      fetchPage();
     } catch { setError('Delete failed'); }
   };
 
@@ -114,8 +115,6 @@ export default function MembersPage() {
       </div>
     );
   };
-
-  if (loading) return <LoadingSpinner className="h-screen" />;
 
   return (
     <div>
@@ -184,7 +183,17 @@ export default function MembersPage() {
       {renderPagination()}
 
       {/* Table */}
-      <div style={{ backgroundColor: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 3px 5px 0px rgba(0,0,0,0.06)' }}>
+      <div style={{ position: 'relative', backgroundColor: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 3px 5px 0px rgba(0,0,0,0.06)' }}>
+        {loading && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(255,255,255,0.65)', zIndex: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            minHeight: '120px',
+          }}>
+            <LoadingSpinner size="md" />
+          </div>
+        )}
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
           <thead>
             <tr style={{ backgroundColor: '#1a297d', color: '#fff' }}>
@@ -205,6 +214,7 @@ export default function MembersPage() {
             ) : (
               paginatedMembers.map((m, idx) => {
                 const mId = m.masterID || m.profileID || m.Id || m.id;
+                const rowKey = `${m.profileID || mId || idx}_${m.GroupId || m.groupId || ''}`;
                 const name = [m.memberName, m.middleName, m.lastName].filter(Boolean).join(' ').trim() || m.MemberName || '';
                 const chapter = m.GrpName || m.GroupName || '';
                 const mobile = m.memberMobile || m.MemberMobile || '';
@@ -214,7 +224,7 @@ export default function MembersPage() {
 
                 return (
                   <tr
-                    key={mId || idx}
+                    key={rowKey}
                     style={{
                       backgroundColor: idx % 2 === 0 ? '#fff' : '#f8f8f8',
                       borderBottom: '1px solid #eee',
@@ -372,7 +382,7 @@ export default function MembersPage() {
                     });
                     alert('Contact updated successfully');
                     setChangeTarget(null);
-                    fetchPage({ silent: true });
+                    fetchPage();
                   } catch { alert('Update failed'); }
                   finally { setChangeSaving(false); }
                 }}
