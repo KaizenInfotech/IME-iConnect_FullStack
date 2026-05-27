@@ -418,14 +418,29 @@ class _DashboardScreenState extends State<DashboardScreen>
             if (resultData is Map<String, dynamic>) {
               final table = resultData['Table'] ?? resultData['table'];
               if (table is List && table.isNotEmpty) {
-                debugPrint('_fetchMemberProfilePhoto: table[0] keys=${table[0].keys}');
+                final row = table[0] as Map<String, dynamic>;
+                debugPrint('_fetchMemberProfilePhoto: table[0] keys=${row.keys}');
                 // iOS CodingKey: memberProfilePhotoPath → "member_profile_photo_path"
                 final photoPath =
-                    table[0]['member_profile_photo_path']?.toString() ?? '';
+                    row['member_profile_photo_path']?.toString() ?? '';
                 debugPrint('_fetchMemberProfilePhoto: photoPath=$photoPath');
-                if (photoPath.isNotEmpty && mounted) {
+
+                // Sync cached name parts so the dashboard greeting reflects
+                // edits made on the profile page (home reads LocalStorage.fullName).
+                final firstName = row['First_Name']?.toString() ?? '';
+                final middleName = row['Middle_Name']?.toString() ?? '';
+                final lastName = row['Last_Name']?.toString() ?? '';
+                if (firstName.isNotEmpty) {
+                  await LocalStorage.instance.setFirstName(firstName);
+                }
+                await LocalStorage.instance.setMiddleName(middleName);
+                if (lastName.isNotEmpty) {
+                  await LocalStorage.instance.setLastName(lastName);
+                }
+
+                if (mounted) {
                   setState(() {
-                    _memberProfilePhotoUrl = photoPath;
+                    if (photoPath.isNotEmpty) _memberProfilePhotoUrl = photoPath;
                   });
                 }
               }

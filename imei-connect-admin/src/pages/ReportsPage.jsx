@@ -46,6 +46,14 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const formatDevicePlatform = (p) => {
+    if (!p) return '';
+    const v = String(p).toLowerCase();
+    if (v === 'ios') return 'iOS';
+    if (v === 'android') return 'Android';
+    return p;
+  };
+
   const formatDOB = (dateStr) => {
     if (!dateStr) return '';
     // Handle dd/MM/yyyy format
@@ -75,7 +83,7 @@ export default function ReportsPage() {
         Email: m.memberEmail || '',
         MobileNumber: m.memberMobile || '',
         DOB: formatDOB(m.member_date_of_birth),
-        'Device name': '',
+        'Device name': formatDevicePlatform(m.device_platform),
       }));
       downloadExcel(data, memberHeaders, 'MembersList.xls');
     } catch { alert('Failed to download Members List'); }
@@ -90,7 +98,7 @@ export default function ReportsPage() {
       if (!raw.length) { alert('No records found for download.'); return; }
       const selectedGroup = groups.find(g => String(g.Id) === String(usersListGroup));
       const branchName = selectedGroup?.GrpName || '';
-      const userHeaders = ['SrNo', 'Branch & Chapter', 'MemberShipId', 'MemberName', 'MobileNo', 'EmailID', 'phone version'];
+      const userHeaders = ['SrNo', 'Branch & Chapter', 'MemberShipId', 'MemberName', 'MobileNo', 'EmailID', 'Device name'];
       const data = raw.map((m, idx) => ({
         SrNo: idx + 1,
         'Branch & Chapter': m.GrpName || branchName,
@@ -98,7 +106,7 @@ export default function ReportsPage() {
         MemberName: [m.memberName, m.lastName].filter(Boolean).join(' '),
         MobileNo: m.memberMobile || '',
         EmailID: m.memberEmail || '',
-        'phone version': '',
+        'Device name': formatDevicePlatform(m.device_platform),
       }));
       downloadExcel(data, userHeaders, 'UsersList.xls');
     } catch { alert('Failed to download Users List'); }

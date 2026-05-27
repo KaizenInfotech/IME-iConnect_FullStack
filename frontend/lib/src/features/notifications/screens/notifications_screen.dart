@@ -23,7 +23,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
-    context.read<NotificationsProvider>().fetchNotifications();
+    // Defer the fetch one frame: fetchNotifications() calls notifyListeners()
+    // synchronously, and calling that during the build pass marks the
+    // InheritedProvider as needing build mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<NotificationsProvider>().fetchNotifications();
+    });
   }
 
   /// Android: ShowNotificationAdapter.onBindViewHolder click handler.

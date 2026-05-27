@@ -352,6 +352,18 @@ public class GroupService : IGroupService
         user.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
+        // Enforce single-device: any other tokens for this user belong to a
+        // previously logged-in phone whose session was already invalidated via
+        // ImeiNo check. Remove them so pushes only fire on the current device.
+        var stale = await _db.DeviceTokens
+            .Where(dt => dt.UserId == user.Id && dt.Token != request.DeviceToken)
+            .ToListAsync();
+        if (stale.Count > 0)
+        {
+            _db.DeviceTokens.RemoveRange(stale);
+            await _db.SaveChangesAsync();
+        }
+
         return new { status = "0", message = "success" };
     }
     public async Task<object> GetAssistanceGov(AssistanceGovRequest request) { await Task.CompletedTask; return new { status = "0", message = "success", ShowHideMonthlyReportModule = "0" }; }

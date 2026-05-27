@@ -382,7 +382,12 @@ public class MemberService : IMemberService
                 state_id = "",
                 state_name = gm.MemberProfile.Addresses.Select(a => a.State).FirstOrDefault(),
                 pincode = gm.MemberProfile.Addresses.Select(a => a.Pincode).FirstOrDefault(),
-                addressResult = gm.MemberProfile.Addresses.Select(a => new { a.Address, a.City, state_name = a.State, a.Pincode }).ToList()
+                addressResult = gm.MemberProfile.Addresses.Select(a => new { a.Address, a.City, state_name = a.State, a.Pincode }).ToList(),
+                device_platform = _db.DeviceTokens
+                    .Where(dt => dt.UserId == gm.MemberProfile.UserId && dt.Platform != null && dt.Platform != "")
+                    .OrderByDescending(dt => dt.UpdatedAt)
+                    .Select(dt => dt.Platform)
+                    .FirstOrDefault() ?? ""
             }).ToListAsync();
         return new { status = "0", message = "success", curDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), zipFilePath = "", MemberDetail = new { NewMemberList = members, UpdatedMemberList = new List<object>(), DeletedMemberList = "" } };
     }
