@@ -33,4 +33,11 @@ public class DocumentSafeController : ControllerBase
         try { return Ok(await _documentService.UpdateDocumentIsRead(request)); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("ReorderDocuments")]
+    public async Task<IActionResult> ReorderDocuments([FromBody] List<ReorderDocumentItem> items)
+    {
+        try { return Ok(await _documentService.ReorderDocuments(items)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
 }

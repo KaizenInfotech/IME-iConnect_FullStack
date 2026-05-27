@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
-import { getGoverningCouncil, deleteBOD, updateBOD } from '../api/memberService';
+import { getGoverningCouncil, deleteBOD, updateBOD, reorderBOD } from '../api/memberService';
 
 const designationOptions = ['-Select-', 'President', 'Vice President', 'Hon. General Secretary', 'Chairman', 'Others'];
 
@@ -23,6 +23,7 @@ export default function GoverningCouncilPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null);
+  const [dragIdx, setDragIdx] = useState(null);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -66,6 +67,27 @@ export default function GoverningCouncilPage() {
       setItems(data);
     } catch {}
     finally { setLoading(false); }
+  };
+
+  // Drag-and-drop reorder. Uses the same /Member/ReorderBOD endpoint as
+  // ExecutiveCommitteePage — both BOD and Governing Council rows live in
+  // bod_master and share the BODorderNumber column.
+  const handleDragStart = (idx) => { setDragIdx(idx); };
+  const handleDragOver = (e) => { e.preventDefault(); };
+  const handleDrop = async (dropIdx) => {
+    if (dragIdx === null || dragIdx === dropIdx) { setDragIdx(null); return; }
+    const newItems = [...items];
+    const [moved] = newItems.splice(dragIdx, 1);
+    newItems.splice(dropIdx, 0, moved);
+    setItems(newItems);
+    setDragIdx(null);
+    try {
+      const payload = newItems
+        .filter(m => m.BOD_PkID)
+        .map((m, i) => ({ MemberId: parseInt(m.BOD_PkID), DisplayOrder: i + 1 }));
+      await reorderBOD(payload);
+      alert('Reorder saved successfully');
+    } catch { alert('Reorder failed'); }
   };
 
   const openAdd = async () => {
@@ -250,17 +272,28 @@ export default function GoverningCouncilPage() {
                 <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal' }}>Designation</th>
                 <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal' }}>Mobile</th>
                 <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 'normal' }}>Email</th>
+                <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 'normal', width: '70px' }}>Reorder</th>
                 <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 'normal', width: '50px' }}>Edit</th>
                 <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 'normal', width: '50px' }}>Delete</th>
               </tr>
             </thead>
             <tbody>
               {items.map((m, idx) => (
-                <tr key={m.Id || m.id || idx} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f8f8f8', borderBottom: '1px solid #eee' }}>
+                <tr key={m.Id || m.id || idx}
+                  draggable
+                  onDragStart={() => handleDragStart(idx)}
+                  onDragOver={handleDragOver}
+                  onDrop={() => handleDrop(idx)}
+                  style={{ backgroundColor: dragIdx === idx ? '#e3f2fd' : (idx % 2 === 0 ? '#fff' : '#f8f8f8'), borderBottom: '1px solid #eee', cursor: 'grab' }}>
                   <td style={{ padding: '10px 16px' }}>{m.MemberName || m.memberName || ''}</td>
                   <td style={{ padding: '10px 12px' }}>{m.Designation || m.designation || ''}</td>
                   <td style={{ padding: '10px 12px' }}>{m.MemberMobile || m.memberMobile || ''}</td>
                   <td style={{ padding: '10px 12px' }}>{m.MemberEmail || m.memberEmail || ''}</td>
+                  <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                    <div title="Drag to reorder" style={{ cursor: 'grab', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="#2196F3"><path d="M3 15h18v-2H3v2zm0 4h18v-2H3v2zm0-8h18V9H3v2zm0-6v2h18V5H3z" /></svg>
+                    </div>
+                  </td>
                   <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                     <button onClick={() => openEdit(m)} title="Edit" style={{ width: '26px', height: '26px', borderRadius: '50%', backgroundColor: '#0ead9a', color: '#fff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                       <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>

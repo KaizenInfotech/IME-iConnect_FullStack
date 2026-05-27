@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import Modal from '../components/shared/Modal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
-import { getDocuments, createDocument, deleteDocument } from '../api/documentService';
+import { getDocuments, createDocument, deleteDocument, reorderDocuments } from '../api/documentService';
 
 const FILTER_OPTIONS = ['All', 'Published', 'Unpublished', 'Expired'];
 const ACCEPTED_TYPES = '.pdf,.png,.jpeg,.jpg,.xls,.xlsx,.doc,.docx';
@@ -68,6 +68,9 @@ export default function DocumentsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [error, setError] = useState('');
   const [errors, setErrors] = useState({});
+  const [dragIdx, setDragIdx] = useState(null);
+
+  const reorderDisabled = filter !== 'All' || searchTerm.trim() !== '';
 
   useEffect(() => { fetchData(); }, []);
 
@@ -146,6 +149,32 @@ export default function DocumentsPage() {
   const handleDownload = (item) => {
     const url = item.DocURL || item.docURL || item.FileUrl || item.fileUrl;
     if (url) window.open(url, '_blank');
+  };
+
+  const docId = (item) => item.docID || item.docId || item.id || item.Id || null;
+
+  const handleDragStart = (idx) => { setDragIdx(idx); };
+  const handleDragOver = (e) => { e.preventDefault(); };
+  const handleDrop = async (dropIdx) => {
+    if (dragIdx === null || dragIdx === dropIdx) { setDragIdx(null); return; }
+    // dragIdx/dropIdx are indices within paginatedItems — translate to allItems.
+    const movedDocId = docId(paginatedItems[dragIdx]);
+    const targetDocId = docId(paginatedItems[dropIdx]);
+    if (!movedDocId || !targetDocId) { setDragIdx(null); return; }
+    const fromGlobal = allItems.findIndex(d => String(docId(d)) === String(movedDocId));
+    const toGlobal = allItems.findIndex(d => String(docId(d)) === String(targetDocId));
+    if (fromGlobal < 0 || toGlobal < 0) { setDragIdx(null); return; }
+    const newAll = [...allItems];
+    const [moved] = newAll.splice(fromGlobal, 1);
+    newAll.splice(toGlobal, 0, moved);
+    setAllItems(newAll);
+    setDragIdx(null);
+    try {
+      const payload = newAll
+        .filter(d => docId(d) != null)
+        .map((d, i) => ({ DocID: parseInt(docId(d)), DisplayOrder: i + 1 }));
+      await reorderDocuments(payload);
+    } catch { setError('Reorder failed'); fetchData(); }
   };
 
   // Pagination
@@ -237,7 +266,15 @@ export default function DocumentsPage() {
                 const pubDate = formatDateDMY(item.PublishDate || item.publishDate);
                 const filterType = getFilterType(item);
                 return (
-                  <tr key={item.id || item.Id || idx} className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                  <tr
+                    key={item.id || item.Id || docId(item) || idx}
+                    draggable={!reorderDisabled}
+                    onDragStart={() => !reorderDisabled && handleDragStart(idx)}
+                    onDragOver={handleDragOver}
+                    onDrop={() => !reorderDisabled && handleDrop(idx)}
+                    className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                    style={{ cursor: reorderDisabled ? 'default' : 'grab' }}
+                  >
                     <td className="px-4 py-3">
                       <div className="font-medium text-[#1a297d]">{title}</div>
                       <div className="text-xs text-gray-500 mt-1">
@@ -245,9 +282,16 @@ export default function DocumentsPage() {
                       </div>
                     </td>
                     <td className="px-2 py-3 text-center">
-                      <button className="text-gray-500 hover:text-[#1a297d]" title="Reorder">
-                        <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>
-                      </button>
+                      <div
+                        title={reorderDisabled ? 'Clear filter/search to reorder' : 'Drag to reorder'}
+                        style={{ cursor: reorderDisabled ? 'not-allowed' : 'grab', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: reorderDisabled ? 0.4 : 1 }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a297d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="3" y1="6" x2="21" y2="6" />
+                          <line x1="3" y1="12" x2="21" y2="12" />
+                          <line x1="3" y1="18" x2="21" y2="18" />
+                        </svg>
+                      </div>
                     </td>
                     <td className="px-2 py-3 text-center">
                       <button onClick={() => handleDownload(item)} className="text-gray-500 hover:text-[#1a297d]" title="Download">

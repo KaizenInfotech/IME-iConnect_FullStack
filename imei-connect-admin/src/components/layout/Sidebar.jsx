@@ -93,9 +93,13 @@ export default function Sidebar({ isOpen, onClose }) {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const hasGroupId = searchParams.has('groupId');
+  // `from=all` means the user navigated here from the global /members
+  // listing — the groupId is only present for data lookup, not because
+  // they're browsing inside a chapter.
+  const fromAll = searchParams.get('from') === 'all';
   // Also check if we're on a chapter detail page like /groups/123
   const isChapterRoute = location.pathname.match(/^\/groups\/\d+/);
-  const inChapterContext = hasGroupId || isChapterRoute;
+  const inChapterContext = (hasGroupId && !fromAll) || isChapterRoute;
 
   return (
     <>

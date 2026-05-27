@@ -17,6 +17,12 @@ public class UpdateDocReadRequest
     public string? memberProfileID { get; set; }
 }
 
+public class ReorderDocumentItem
+{
+    public int DocID { get; set; }
+    public int DisplayOrder { get; set; }
+}
+
 // ─── Responses ───
 
 public class DocumentListResponse
@@ -36,4 +42,5 @@ public class DocumentItemDto
     public string? createDateTime { get; set; }
     public string? docAccessType { get; set; }
     public string? isRead { get; set; }
+    public int displayOrder { get; set; }
 }

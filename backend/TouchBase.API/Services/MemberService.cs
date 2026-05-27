@@ -164,6 +164,41 @@ public class MemberService : IMemberService
         if (request.secondaryMobileNo != null) profile.SecondaryMobileNo = request.secondaryMobileNo;
         profile.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+
+        // Mirror name/mobile/email into the legacy production tables that the BOD /
+        // Governing Council / WebGetBODList stored procs still read from. Without this
+        // mirror, mobile screens backed by those procs keep showing the pre-edit name.
+        try
+        {
+            using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
+            await conn.OpenAsync();
+
+            var firstName = profile.User?.FirstName ?? "";
+            var middleName = profile.User?.MiddleName ?? "";
+            var lastName = profile.User?.LastName ?? "";
+            var userId = profile.UserId;
+
+            using var syncCmd = conn.CreateCommand();
+            syncCmd.CommandText = "INSERT INTO member_master_profile (pk_member_master_profile_id, fk_main_member_master_id, Member_name, member_email_id, member_mobile_no) VALUES (@id, @uid, @name, @email, @mobile) ON DUPLICATE KEY UPDATE fk_main_member_master_id=@uid, Member_name=@name, member_email_id=@email, member_mobile_no=@mobile";
+            syncCmd.Parameters.AddWithValue("@id", profile.Id);
+            syncCmd.Parameters.AddWithValue("@uid", userId);
+            syncCmd.Parameters.AddWithValue("@name", firstName);
+            syncCmd.Parameters.AddWithValue("@email", profile.MemberEmail ?? "");
+            syncCmd.Parameters.AddWithValue("@mobile", profile.MemberMobile ?? "");
+            await syncCmd.ExecuteNonQueryAsync();
+
+            using var syncCmd2 = conn.CreateCommand();
+            syncCmd2.CommandText = "INSERT INTO main_member_master (pk_main_member_master_id, member_name, middle_name, last_name, member_mobile, member_emailid) VALUES (@id, @first, @middle, @last, @mobile, @email) ON DUPLICATE KEY UPDATE member_name=@first, middle_name=@middle, last_name=@last, member_mobile=@mobile, member_emailid=@email";
+            syncCmd2.Parameters.AddWithValue("@id", userId);
+            syncCmd2.Parameters.AddWithValue("@first", firstName);
+            syncCmd2.Parameters.AddWithValue("@middle", middleName);
+            syncCmd2.Parameters.AddWithValue("@last", lastName);
+            syncCmd2.Parameters.AddWithValue("@mobile", profile.MemberMobile ?? "");
+            syncCmd2.Parameters.AddWithValue("@email", profile.MemberEmail ?? "");
+            await syncCmd2.ExecuteNonQueryAsync();
+        }
+        catch { /* best-effort mirror — don't fail the EF save if prod sync hiccups */ }
+
         return new UpdateResponse { status = "0", message = "success" };
     }
 
@@ -224,14 +259,15 @@ public class MemberService : IMemberService
         }
         else
         {
-            var query = _db.MemberProfiles
-                .Include(mp => mp.User)
-                .Include(mp => mp.GroupMemberships).ThenInclude(gm => gm.Group)
+            // Some users have multiple MemberProfile rows (one per chapter they
+            // belong to, e.g. their home chapter + National Admin). Dedup by
+            // UserId so each person shows up once.
+            var matchingProfiles = _db.MemberProfiles
                 .Where(mp => mp.GroupMemberships.Any(gm => gm.IsActive));
 
             if (s != null)
             {
-                query = query.Where(mp =>
+                matchingProfiles = matchingProfiles.Where(mp =>
                     (mp.MemberName != null && mp.MemberName.Contains(s)) ||
                     (mp.User.FirstName != null && mp.User.FirstName.Contains(s)) ||
                     (mp.User.MiddleName != null && mp.User.MiddleName.Contains(s)) ||
@@ -241,26 +277,56 @@ public class MemberService : IMemberService
                     (mp.ImeiMembershipId != null && mp.ImeiMembershipId.Contains(s)));
             }
 
-            totalCount = await query.CountAsync();
-            items = await query
-                .OrderBy(mp => mp.MemberName)
-                .ThenBy(mp => mp.Id)
+            var matchingUserIds = matchingProfiles.Select(mp => mp.UserId).Distinct();
+
+            totalCount = await matchingUserIds.CountAsync();
+
+            // Paginate distinct user IDs ordered by the user's first name
+            var pagedUserIds = await matchingUserIds
+                .Join(_db.Users, uid => uid, u => u.Id, (uid, u) => new { uid, orderName = u.FirstName ?? "" })
+                .OrderBy(x => x.orderName)
+                .ThenBy(x => x.uid)
                 .Skip((pageNo - 1) * pageSize)
                 .Take(pageSize)
-                .Select(mp => new AllMembersPagedItemDto
+                .Select(x => x.uid)
+                .ToListAsync();
+
+            // Load all profiles for the paged users; group and pick the lowest-Id
+            // profile per user as the display representative.
+            var profilesForPage = await _db.MemberProfiles
+                .Include(mp => mp.User)
+                .Include(mp => mp.GroupMemberships).ThenInclude(gm => gm.Group)
+                .Where(mp => pagedUserIds.Contains(mp.UserId))
+                .ToListAsync();
+
+            var representativeByUser = profilesForPage
+                .GroupBy(mp => mp.UserId)
+                .ToDictionary(g => g.Key, g => g.OrderBy(mp => mp.Id).First());
+
+            items = pagedUserIds
+                .Where(uid => representativeByUser.ContainsKey(uid))
+                .Select(uid =>
                 {
-                    masterID = mp.UserId.ToString(),
-                    profileID = mp.Id.ToString(),
-                    GroupId = mp.GroupMemberships.Where(gm => gm.IsActive).Select(gm => gm.GroupId.ToString()).FirstOrDefault(),
-                    GrpName = mp.GroupMemberships.Where(gm => gm.IsActive).Select(gm => gm.Group.GrpName).FirstOrDefault(),
-                    memberName = mp.User.FirstName ?? mp.MemberName,
-                    middleName = mp.User.MiddleName ?? "",
-                    lastName = mp.User.LastName ?? "",
-                    memberEmail = mp.MemberEmail,
-                    memberMobile = (mp.CountryCode != null ? "+" + mp.CountryCode + " " : "") + mp.MemberMobile,
-                    profilePic = mp.ProfilePic,
-                    member_IMEI_id = mp.ImeiMembershipId ?? ""
-                }).ToListAsync();
+                    var mp = representativeByUser[uid];
+                    var activeGm = mp.GroupMemberships
+                        .Where(gm => gm.IsActive)
+                        .OrderBy(gm => gm.GroupId)
+                        .FirstOrDefault();
+                    return new AllMembersPagedItemDto
+                    {
+                        masterID = mp.UserId.ToString(),
+                        profileID = mp.Id.ToString(),
+                        GroupId = activeGm?.GroupId.ToString(),
+                        GrpName = activeGm?.Group?.GrpName,
+                        memberName = mp.User?.FirstName ?? mp.MemberName,
+                        middleName = mp.User?.MiddleName ?? "",
+                        lastName = mp.User?.LastName ?? "",
+                        memberEmail = mp.MemberEmail,
+                        memberMobile = (mp.CountryCode != null ? "+" + mp.CountryCode + " " : "") + mp.MemberMobile,
+                        profilePic = mp.ProfilePic,
+                        member_IMEI_id = mp.ImeiMembershipId ?? ""
+                    };
+                }).ToList();
         }
 
         var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
@@ -445,6 +511,7 @@ public class MemberService : IMemberService
                     var picUrl = "";
                     if (int.TryParse(m["profileID"], out var mPid) && pics.ContainsKey(mPid))
                         picUrl = pics[mPid] ?? "";
+                    picUrl = StripAppleDoublePrefix(picUrl);
                     // Ensure pic is a full URL — bare filenames go in /Documents/directory/
                     if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                     {
@@ -471,15 +538,20 @@ public class MemberService : IMemberService
         }
         catch { }
 
-        // Fallback to local DB
+        // Fallback to local DB (groups whose members aren't in bod_master, e.g. Head Office).
+        // We use group_members.Id as the BOD_pkID surrogate and tag Source = "gm" so the
+        // reorder endpoint knows to write to group_members.DisplayOrder.
         var query = _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Designation != null && x.mp.Designation != "");
         if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.searchText));
         var bodBaseUrl2 = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
-        var rawBodLocal = await query.Select(x => new { masterUID = x.mp.UserId.ToString(), grpID = x.gm.GroupId.ToString(), profileID = x.mp.Id.ToString(), memberName = x.mp.MemberName, membermobile = x.mp.MemberMobile, MemberDesignation = x.mp.Designation, pic = x.mp.ProfilePic ?? "", Email = x.mp.MemberEmail }).ToListAsync();
+        var rawBodLocal = await query
+            .OrderBy(x => x.gm.DisplayOrder).ThenBy(x => x.gm.Id)
+            .Select(x => new { gmId = x.gm.Id, displayOrder = x.gm.DisplayOrder, masterUID = x.mp.UserId.ToString(), grpID = x.gm.GroupId.ToString(), profileID = x.mp.Id.ToString(), memberName = x.mp.MemberName, membermobile = x.mp.MemberMobile, MemberDesignation = x.mp.Designation, pic = x.mp.ProfilePic ?? "", Email = x.mp.MemberEmail })
+            .ToListAsync();
         var localMembers = rawBodLocal.Select(x => {
-            var picUrl = x.pic;
+            var picUrl = StripAppleDoublePrefix(x.pic);
             if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             {
                 if (!picUrl.Contains("/"))
@@ -488,7 +560,7 @@ public class MemberService : IMemberService
                     picUrl = "/" + picUrl;
                 picUrl = bodBaseUrl2 + picUrl;
             }
-            return new { x.masterUID, x.grpID, x.profileID, x.memberName, x.membermobile, x.MemberDesignation, pic = picUrl, x.Email };
+            return new { BOD_pkID = x.gmId.ToString(), Source = "gm", x.masterUID, x.grpID, x.profileID, x.memberName, x.membermobile, x.MemberDesignation, pic = picUrl, x.Email };
         }).ToList();
         return new { TBGetBODResult = new { status = "0", message = "success", BODResult = localMembers } };
     }
@@ -502,7 +574,12 @@ public class MemberService : IMemberService
             foreach (var item in items)
             {
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = "UPDATE bod_master SET BODorderNumber = @order WHERE BOD_PkID = @id AND COALESCE(Isdeleted,0)=0";
+                // Source "gm" → group_members.DisplayOrder (groups like Head Office
+                // whose members aren't in bod_master). Default → bod_master.BODorderNumber.
+                if (string.Equals(item.Source, "gm", StringComparison.OrdinalIgnoreCase))
+                    cmd.CommandText = "UPDATE group_members SET DisplayOrder = @order WHERE Id = @id";
+                else
+                    cmd.CommandText = "UPDATE bod_master SET BODorderNumber = @order WHERE BOD_PkID = @id AND COALESCE(Isdeleted,0)=0";
                 cmd.Parameters.AddWithValue("@order", item.DisplayOrder);
                 cmd.Parameters.AddWithValue("@id", item.MemberId);
                 await cmd.ExecuteNonQueryAsync();
@@ -513,6 +590,19 @@ public class MemberService : IMemberService
     }
 
     private const string ProdConnStr = "server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True;Allow User Variables=true";
+
+    // Strip macOS AppleDouble sidecar prefix ("._") from the filename portion
+    // of an image path. Some pic URLs in the legacy DB point at "._foo.jpg"
+    // metadata files that don't actually exist on the server.
+    private static string StripAppleDoublePrefix(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return path;
+        var slash = path.LastIndexOf('/');
+        var name = slash >= 0 ? path.Substring(slash + 1) : path;
+        if (!name.StartsWith("._")) return path;
+        var stripped = name.Substring(2);
+        return slash >= 0 ? path.Substring(0, slash + 1) + stripped : stripped;
+    }
 
     public async Task<object> GetGoverningCouncil(GoverningCouncilRequest request)
     {
@@ -557,7 +647,7 @@ public class MemberService : IMemberService
             while (await reader.ReadAsync())
             {
                 // Ensure pic is a full URL — old data may have bare filenames or relative paths
-                var picValue = reader["pic"]?.ToString() ?? "";
+                var picValue = StripAppleDoublePrefix(reader["pic"]?.ToString() ?? "");
                 if (!string.IsNullOrEmpty(picValue) && !picValue.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 {
                     // If it's a bare filename (no path), prepend /Documents/directory/
@@ -598,7 +688,7 @@ public class MemberService : IMemberService
         var appBaseUrl2 = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
         var rawLocalMembers = await query.Select(x => new { BOD_pkID = x.mp.Id, ProfileID = x.mp.Id, FK_Master_Designation_ID = 0, PhoneNo = x.mp.MemberMobile, Email = x.mp.MemberEmail, MemberName = x.mp.MemberName, masterUID = x.mp.UserId, sr_NO = 0, grpID = 31185, pic = x.mp.ProfilePic ?? "", MemberDesignation = x.mp.Designation, membermobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile }).ToListAsync();
         var localMembers = rawLocalMembers.Select(x => {
-            var picUrl = x.pic;
+            var picUrl = StripAppleDoublePrefix(x.pic);
             if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             {
                 if (!picUrl.Contains("/"))

@@ -205,7 +205,7 @@ public class WebAddMemberRequest
     public string? country { get; set; }
 }
 
-public class ReorderItem { public int MemberId { get; set; } public int DisplayOrder { get; set; } }
+public class ReorderItem { public int MemberId { get; set; } public int DisplayOrder { get; set; } public string? Source { get; set; } }
 public class BODDetailRequest { public string? BOD_PkID { get; set; } public string? YearFilter { get; set; } }
 public class DeleteBODRequest { public string? BOD_PkID { get; set; } public string? YearFilter { get; set; } }
 public class UpdateBODRequest

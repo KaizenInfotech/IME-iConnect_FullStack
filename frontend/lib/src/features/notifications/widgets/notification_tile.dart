@@ -35,7 +35,10 @@ class NotificationTile extends StatelessWidget {
       case 'Gallery':
         return Icons.photo_library;
       case 'PopupNoti':
-        return Icons.celebration;
+      case 'Birthday':
+        return Icons.cake;
+      case 'Anniversary':
+        return Icons.favorite;
       default:
         return Icons.notifications;
     }
@@ -99,13 +102,16 @@ class NotificationTile extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // Content
+              // Content — title (entityName) is the prominent line,
+              // description (Message) sits below, then the timestamp.
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.displayMessage,
+                      item.entityName.isNotEmpty
+                          ? item.entityName
+                          : item.displayMessage,
                       style: AppTextStyles.body2.copyWith(
                         fontWeight:
                             isUnread ? FontWeight.w800 : FontWeight.w300,
@@ -113,13 +119,14 @@ class NotificationTile extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (item.entityName.isNotEmpty) ...[
+                    if (item.entityName.isNotEmpty &&
+                        item.displayMessage.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        item.entityName,
+                        item.displayMessage,
                         style: AppTextStyles.captionSmall
                             .copyWith(color: AppColors.textSecondary),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],

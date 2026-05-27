@@ -50,11 +50,18 @@ export default function ExecutiveCommitteePage() {
   // --- Drag and drop reorder ---
   const [dragIdx, setDragIdx] = useState(null);
 
-  const handleDragStart = (idx) => { setDragIdx(idx); };
+  // Every row carries BOD_pkID + Source. For chapters backed by bod_master,
+  // Source is undefined and BOD_pkID is the bod_master PK. For groups like
+  // Head Office (no bod_master rows), the backend returns Source="gm" with
+  // BOD_pkID set to the group_members row id so we can still reorder.
+  const canReorder = items.length > 0 && items.every(m => m.BOD_pkID != null && m.BOD_pkID !== '');
 
-  const handleDragOver = (e) => { e.preventDefault(); };
+  const handleDragStart = (idx) => { if (canReorder) setDragIdx(idx); };
+
+  const handleDragOver = (e) => { if (canReorder) e.preventDefault(); };
 
   const handleDrop = async (dropIdx) => {
+    if (!canReorder) { setDragIdx(null); return; }
     if (dragIdx === null || dragIdx === dropIdx) { setDragIdx(null); return; }
     const newItems = [...items];
     const [removed] = newItems.splice(dragIdx, 1);
@@ -62,7 +69,11 @@ export default function ExecutiveCommitteePage() {
     setItems(newItems);
     setDragIdx(null);
     try {
-      const reorderData = newItems.map((m, i) => ({ MemberId: parseInt(m.BOD_pkID), DisplayOrder: i + 1 }));
+      const reorderData = newItems.map((m, i) => ({
+        MemberId: parseInt(m.BOD_pkID),
+        DisplayOrder: i + 1,
+        Source: m.Source || null,
+      }));
       await reorderBOD(reorderData);
       alert('Reorder saved successfully');
     } catch { alert('Reorder failed'); }
@@ -206,11 +217,11 @@ export default function ExecutiveCommitteePage() {
             ) : (
               items.map((m, idx) => (
                 <tr key={m.BOD_pkID || m.profileID || idx}
-                  draggable
+                  draggable={canReorder}
                   onDragStart={() => handleDragStart(idx)}
                   onDragOver={handleDragOver}
                   onDrop={() => handleDrop(idx)}
-                  style={{ backgroundColor: dragIdx === idx ? '#e3f2fd' : (idx % 2 === 0 ? '#fff' : '#f8f8f8'), borderBottom: '1px solid #eee', cursor: 'grab' }}
+                  style={{ backgroundColor: dragIdx === idx ? '#e3f2fd' : (idx % 2 === 0 ? '#fff' : '#f8f8f8'), borderBottom: '1px solid #eee', cursor: canReorder ? 'grab' : 'default' }}
                 >
                   <td style={{ padding: '8px 12px', color: '#333' }}>{m.memberName}</td>
                   <td style={{ padding: '8px 12px', color: '#555' }}>{m.MemberDesignation}</td>
@@ -218,7 +229,10 @@ export default function ExecutiveCommitteePage() {
                   <td style={{ padding: '8px 12px', color: '#555', fontSize: '11px' }}>{m.Email}</td>
                   {/* Reorder - drag handle */}
                   <td style={{ padding: '8px 8px', textAlign: 'center' }}>
-                    <div title="Drag to reorder" style={{ cursor: 'grab', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div
+                      title={canReorder ? 'Drag to reorder' : 'Reorder not available for this group'}
+                      style={{ cursor: canReorder ? 'grab' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: canReorder ? 1 : 0.3 }}
+                    >
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="#2196F3"><path d="M3 15h18v-2H3v2zm0 4h18v-2H3v2zm0-8h18V9H3v2zm0-6v2h18V5H3z" /></svg>
                     </div>
                   </td>

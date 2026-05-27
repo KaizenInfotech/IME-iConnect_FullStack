@@ -112,10 +112,19 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         // Build notification matching IME(I) App
         val largeIconBitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_launcher_big)
 
+        // Prefer the real notification title from the FCM data payload over the
+        // generic channel name. Backend sets `entityName` for every push;
+        // announcements also include `ann_title`, events include `eventTitle`.
+        val contentTitle = data["entityName"]
+            ?: data["ann_title"]
+            ?: data["eventTitle"]
+            ?: data["title"]
+            ?: CHANNEL_NAME
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-        builder.setContentTitle(CHANNEL_NAME)
+        builder.setContentTitle(contentTitle)
         builder.setContentText(plainText)
-        builder.setStyle(NotificationCompat.BigTextStyle().bigText(plainText))
+        builder.setStyle(NotificationCompat.BigTextStyle().bigText(plainText).setBigContentTitle(contentTitle))
         builder.setSmallIcon(R.drawable.ic_launcher_big)
         builder.setLargeIcon(largeIconBitmap)
         builder.color = Color.parseColor("#00AEEF")

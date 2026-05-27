@@ -136,6 +136,7 @@ public interface IDocumentService
     Task<DocumentListResponse> GetDocumentList(DocumentListRequest request);
     Task<object> AddDocument(IFormFile file, string grpID, string profileID, string docTitle);
     Task<object> UpdateDocumentIsRead(UpdateDocReadRequest request);
+    Task<object> ReorderDocuments(List<ReorderDocumentItem> items);
 }
 
 public interface IEbulletinService

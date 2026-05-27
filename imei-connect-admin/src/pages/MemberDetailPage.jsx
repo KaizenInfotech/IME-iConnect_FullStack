@@ -28,6 +28,12 @@ export default function MemberDetailPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const filterGroupId = searchParams.get('groupId');
+  // `from=all` means the user opened this detail page from the global
+  // /members listing — return there on save/back instead of the chapter view.
+  const fromAll = searchParams.get('from') === 'all';
+  const listReturnUrl = fromAll || !filterGroupId
+    ? '/members'
+    : `/members?groupId=${filterGroupId}`;
   // Use the chapter id from the URL query (passed by MembersPage). Fallback to
   // empty string so the backend at least returns the member record without
   // overwriting Chaptr_Brnch_Name with a wrong group's name.
@@ -269,7 +275,7 @@ export default function MemberDetailPage() {
       });
       setError('');
       alert('Member updated successfully');
-      navigate(filterGroupId ? `/members?groupId=${filterGroupId}` : '/members');
+      navigate(listReturnUrl);
     } catch (err) {
       setError(err.response?.data?.message || 'Save failed');
     } finally {
@@ -333,7 +339,7 @@ export default function MemberDetailPage() {
           {saving ? 'Saving...' : 'Save'}
         </button>
         <button
-          onClick={() => navigate(filterGroupId ? `/members?groupId=${filterGroupId}` : '/members')}
+          onClick={() => navigate(listReturnUrl)}
           className="px-[12px] py-[6px] text-[13px] text-white rounded-[4px] border-0 cursor-pointer bg-[#1a297d]"
         >
           Back

@@ -253,11 +253,16 @@ export default function MembersPage() {
                     <td style={{ padding: '8px 8px', textAlign: 'center' }}>
                       <button
                         onClick={() => {
-                          // Always pass the member's actual chapter groupId so the
-                          // edit page can resolve Chapter/Branch Name, even when
-                          // editing from the global "all members" listing.
+                          // Pass the member's chapter groupId so the detail page
+                          // can fetch the right profile. When opened from the
+                          // all-members listing, also tag from=all so the detail
+                          // page returns to /members (not the chapter view).
                           const gid = filterGroupId || m.GroupId || m.groupId || '';
-                          navigate(`/members/${mId}${gid ? `?groupId=${gid}` : ''}`);
+                          const params = new URLSearchParams();
+                          if (gid) params.set('groupId', gid);
+                          if (!filterGroupId) params.set('from', 'all');
+                          const qs = params.toString();
+                          navigate(`/members/${mId}${qs ? `?${qs}` : ''}`);
                         }}
                         title="Edit"
                         style={{

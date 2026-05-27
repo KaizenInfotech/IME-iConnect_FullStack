@@ -135,9 +135,12 @@ class LocalNotificationService {
       enableVibration: true,
       playSound: true,
       autoCancel: true,
-      styleInformation: BigTextStyleInformation(body),
       icon: 'ic_launcher_big',
       largeIcon: const DrawableResourceAndroidBitmap('ic_launcher_big'),
+      styleInformation: BigTextStyleInformation(
+        body,
+        contentTitle: title,
+      ),
     );
 
     const iosDetails = DarwinNotificationDetails(
@@ -164,16 +167,16 @@ class LocalNotificationService {
       }
     }
 
+    final displayTitle = title.trim().isNotEmpty ? title.trim() : _appName;
     try {
-      // Android: setContentTitle(R.string.app_name) — always show app name as title
       await _plugin.show(
         notificationId,
-        _appName,
+        displayTitle,
         body,
         details,
         payload: payload,
       );
-      debugPrint('Local notification shown: id=$notificationId, title=$_appName, body=$body');
+      debugPrint('Local notification shown: id=$notificationId, title=$displayTitle, body=$body');
     } catch (e) {
       debugPrint('Local notification show ERROR: $e');
     }

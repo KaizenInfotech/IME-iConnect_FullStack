@@ -15,9 +15,11 @@ public class EventService : IEventService
     private readonly INotificationService _notificationService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<EventService> _logger;
     private const int PageSize = 25;
     private const string OldApiBase = "https://api.imeiconnect.com/V2/api";
-    public EventService(AppDbContext db, INotificationService notificationService, IHttpClientFactory httpClientFactory, IConfiguration configuration) { _db = db; _notificationService = notificationService; _httpClientFactory = httpClientFactory; _configuration = configuration; }
+    public EventService(AppDbContext db, INotificationService notificationService, IHttpClientFactory httpClientFactory, IConfiguration configuration, IServiceScopeFactory scopeFactory, ILogger<EventService> logger) { _db = db; _notificationService = notificationService; _httpClientFactory = httpClientFactory; _configuration = configuration; _scopeFactory = scopeFactory; _logger = logger; }
 
     private const string ProdConnStr = "server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True;Allow User Variables=true";
 
@@ -228,6 +230,29 @@ public class EventService : IEventService
         var userId = int.TryParse(request.userID, out var uid) ? uid : 0;
         var eventId = int.TryParse(request.eventID, out var eid) ? eid : 0;
 
+        // Convert base64 data URL → uploaded file URL up-front so both the
+        // prod-DB INSERT and the local-DB fallback store an http(s) URL in
+        // `event_img`, not a 7 MB data: blob that the mobile can't render.
+        var evtImgPersist = request.eventImageID;
+        if (!string.IsNullOrEmpty(evtImgPersist) && evtImgPersist.StartsWith("data:image"))
+        {
+            try
+            {
+                var base64Data = evtImgPersist.Substring(evtImgPersist.IndexOf(",") + 1);
+                var ext = evtImgPersist.Contains("png") ? ".png" : ".jpg";
+                var fileName = $"{Guid.NewGuid()}{ext}";
+                var dir = Path.Combine("wwwroot", "uploads", "events"); Directory.CreateDirectory(dir);
+                await File.WriteAllBytesAsync(Path.Combine(dir, fileName), Convert.FromBase64String(base64Data));
+                var appBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
+                evtImgPersist = $"{appBaseUrl}/uploads/events/{fileName}";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to decode/save event image base64; persisting empty image url instead.");
+                evtImgPersist = "";
+            }
+        }
+
         // Save to production DB (imei_production) - same as production web app
         try
         {
@@ -261,7 +286,7 @@ public class EventService : IEventService
             cmd.Parameters.AddWithValue("@rsvp", request.rsvpEnable == "1" ? 1 : 0);
             cmd.Parameters.AddWithValue("@ques", request.questionEnable == "1" ? 1 : 0);
             cmd.Parameters.AddWithValue("@reglink", request.reglink ?? "");
-            cmd.Parameters.AddWithValue("@img", request.eventImageID ?? "");
+            cmd.Parameters.AddWithValue("@img", evtImgPersist ?? "");
             cmd.Parameters.AddWithValue("@userId", userId);
             await cmd.ExecuteNonQueryAsync();
 
@@ -348,31 +373,41 @@ public class EventService : IEventService
             if (eventId == 0 && grpId > 0 && prodSendNow)
             {
                 var isChapter = await _db.Clubs.AnyAsync(c => c.GroupId == grpId);
+                // Resolve via a fresh DI scope — the request scope (and its DbContext)
+                // is disposed as soon as we return success, which previously caused
+                // the fire-and-forget Task.Run to fail silently.
+                var scopeFactory = _scopeFactory;
+                var logger = _logger;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
+                        using var scope = scopeFactory.CreateScope();
+                        var notif = scope.ServiceProvider.GetRequiredService<INotificationService>();
                         var extra = new Dictionary<string, string>
                         {
                             ["eventId"] = newEventId.ToString(),
                             ["eventTitle"] = request.evntTitle ?? "",
                             ["eventDate"] = request.evntDate ?? "",
                             ["eventDesc"] = request.evntDesc ?? "",
-                            ["eventImg"] = request.eventImageID ?? "",
+                            ["eventImg"] = evtImgPersist ?? "",
                             ["reglink"] = request.reglink ?? "",
                             ["venue"] = request.eventVenue ?? "",
                             ["grpID"] = grpId.ToString()
                         };
                         if (!isChapter)
-                            await _notificationService.SendAllUsersNotification(
+                            await notif.SendAllUsersNotification(
                                 "Event", request.evntTitle ?? "New Event",
                                 request.evntDesc ?? "A new event has been created", extra);
                         else
-                            await _notificationService.SendGroupNotification(
+                            await notif.SendGroupNotification(
                                 grpId, "Event", request.evntTitle ?? "New Event",
                                 request.evntDesc ?? "A new event has been created", extra);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Failed to send event notification (prod path), eventId={EventId}, grpId={GrpId}", newEventId, grpId);
+                    }
                 });
             }
             else if (eventId == 0 && grpId > 0 && !prodSendNow)
@@ -381,7 +416,7 @@ public class EventService : IEventService
                 var scheduledEv = new Event
                 {
                     GroupId = grpId, EventTitle = request.evntTitle, EventDesc = request.evntDesc,
-                    EventImageId = request.eventImageID, EventVenue = request.eventVenue,
+                    EventImageId = evtImgPersist, EventVenue = request.eventVenue,
                     EventDate = request.evntDate, PublishDate = request.publishDate,
                     RegLink = request.reglink, NotificationSent = false, CreatedBy = userId
                 };
@@ -410,19 +445,8 @@ public class EventService : IEventService
         }
 
         ev.EventTitle = request.evntTitle; ev.EventDesc = request.evntDesc; ev.EventType = request.eventType;
-        // Convert base64 image to file if needed
-        var evtImg = request.eventImageID;
-        if (!string.IsNullOrEmpty(evtImg) && evtImg.StartsWith("data:image"))
-        {
-            var base64Data = evtImg.Substring(evtImg.IndexOf(",") + 1);
-            var ext = evtImg.Contains("png") ? ".png" : ".jpg";
-            var fileName = $"{Guid.NewGuid()}{ext}";
-            var dir = Path.Combine("wwwroot", "uploads", "events"); Directory.CreateDirectory(dir);
-            await File.WriteAllBytesAsync(Path.Combine(dir, fileName), Convert.FromBase64String(base64Data));
-            var appBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
-            evtImg = $"{appBaseUrl}/uploads/events/{fileName}";
-        }
-        ev.EventImageId = evtImg; ev.EventVenue = request.eventVenue;
+        // Image was already converted to an uploaded URL up at the top of AddEvent (evtImgPersist).
+        ev.EventImageId = evtImgPersist; ev.EventVenue = request.eventVenue;
         ev.VenueLat = request.venueLat; ev.VenueLon = request.venueLong;
         ev.EventDate = request.evntDate; ev.PublishDate = request.publishDate;
         ev.ExpiryDate = request.expiryDate; ev.NotifyDate = request.notifyDate;
@@ -446,31 +470,40 @@ public class EventService : IEventService
         if (eventId == 0 && grpId > 0 && sendNow)
         {
             var isChapter = await _db.Clubs.AnyAsync(c => c.GroupId == grpId);
+            var scopeFactory = _scopeFactory;
+            var logger = _logger;
+            var newId = ev.Id;
+            var imgId = ev.EventImageId;
             _ = Task.Run(async () =>
             {
                 try
                 {
+                    using var scope = scopeFactory.CreateScope();
+                    var notif = scope.ServiceProvider.GetRequiredService<INotificationService>();
                     var extra = new Dictionary<string, string>
                     {
-                        ["eventId"] = ev.Id.ToString(),
+                        ["eventId"] = newId.ToString(),
                         ["eventTitle"] = request.evntTitle ?? "",
                         ["eventDate"] = request.evntDate ?? "",
                         ["eventDesc"] = request.evntDesc ?? "",
-                        ["eventImg"] = ev.EventImageId ?? "",
+                        ["eventImg"] = imgId ?? "",
                         ["reglink"] = request.reglink ?? "",
                         ["venue"] = request.eventVenue ?? "",
                         ["grpID"] = grpId.ToString()
                     };
                     if (!isChapter)
-                        await _notificationService.SendAllUsersNotification(
+                        await notif.SendAllUsersNotification(
                             "Event", request.evntTitle ?? "New Event",
                             request.evntDesc ?? "A new event has been created", extra);
                     else
-                        await _notificationService.SendGroupNotification(
+                        await notif.SendGroupNotification(
                             grpId, "Event", request.evntTitle ?? "New Event",
                             request.evntDesc ?? "A new event has been created", extra);
                 }
-                catch { /* don't fail event creation if notification fails */ }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to send event notification (local path), eventId={EventId}, grpId={GrpId}", newId, grpId);
+                }
             });
         }
 

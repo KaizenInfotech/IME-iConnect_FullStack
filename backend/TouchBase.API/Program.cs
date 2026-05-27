@@ -92,6 +92,9 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 // Background service: sends push notifications at scheduled publishDate
 builder.Services.AddHostedService<TouchBase.API.Services.ScheduledNotificationService>();
 
+// Background service: daily 08:00 push for birthdays and anniversaries
+builder.Services.AddHostedService<TouchBase.API.Services.CelebrationNotificationService>();
+
 // --- Controllers (JSON only, no views) ---
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

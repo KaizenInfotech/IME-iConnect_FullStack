@@ -69,6 +69,7 @@ public class AppDbContext : DbContext
 
     // Notifications
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<CelebrationNotificationLog> CelebrationNotificationLogs => Set<CelebrationNotificationLog>();
 
     // Zones & Chapters
     public DbSet<Zone> Zones => Set<Zone>();
@@ -104,6 +105,14 @@ public class AppDbContext : DbContext
             e.ToTable("users");
             e.HasIndex(u => u.MobileNo).IsUnique();
             e.HasIndex(u => u.Email);
+        });
+
+        // ─── CelebrationNotificationLog ───
+        modelBuilder.Entity<CelebrationNotificationLog>(e =>
+        {
+            e.ToTable("celebration_notification_log");
+            e.Property(c => c.Type).HasMaxLength(20);
+            e.HasIndex(c => new { c.CelebrationDate, c.MemberProfileId, c.Type }).IsUnique();
         });
 
         // ─── MemberProfile ───

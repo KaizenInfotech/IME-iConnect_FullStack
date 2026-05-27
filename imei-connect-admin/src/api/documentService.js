@@ -13,3 +13,6 @@ export const deleteDocument = (DocID) =>
 
 export const updateDocumentIsRead = (DocID, memberProfileID) =>
   api.post('/DocumentSafe/UpdateDocumentIsRead', { DocID, memberProfileID });
+
+export const reorderDocuments = (items) =>
+  api.post('/DocumentSafe/ReorderDocuments', items);

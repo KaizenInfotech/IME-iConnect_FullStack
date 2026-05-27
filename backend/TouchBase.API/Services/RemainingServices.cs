@@ -531,7 +531,9 @@ public class AnnouncementService : IAnnouncementService
     private readonly AppDbContext _db;
     private readonly INotificationService _notificationService;
     private readonly IConfiguration _configuration;
-    public AnnouncementService(AppDbContext db, IHttpClientFactory httpClientFactory, INotificationService notificationService, IConfiguration configuration) { _db = db; _notificationService = notificationService; _configuration = configuration; }
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<AnnouncementService> _logger;
+    public AnnouncementService(AppDbContext db, IHttpClientFactory httpClientFactory, INotificationService notificationService, IConfiguration configuration, IServiceScopeFactory scopeFactory, ILogger<AnnouncementService> logger) { _db = db; _notificationService = notificationService; _configuration = configuration; _scopeFactory = scopeFactory; _logger = logger; }
 
     public async Task<object> GetAnnouncementList(AnnouncementListRequest request)
     {
@@ -623,30 +625,39 @@ public class AnnouncementService : IAnnouncementService
         if (annId == 0 && grpId > 0 && sendNow)
         {
             var isChapter = await _db.Clubs.AnyAsync(c => c.GroupId == grpId);
+            var scopeFactory = _scopeFactory;
+            var logger = _logger;
+            var newId = ann.Id;
+            var imgUrl = ann.AnnounImg;
             _ = Task.Run(async () =>
             {
                 try
                 {
+                    using var scope = scopeFactory.CreateScope();
+                    var notif = scope.ServiceProvider.GetRequiredService<INotificationService>();
                     var extra = new Dictionary<string, string>
                     {
-                        ["announId"] = ann.Id.ToString(),
+                        ["announId"] = newId.ToString(),
                         ["ann_title"] = request.announTitle ?? "",
                         ["Ann_date"] = request.publishDate ?? "",
                         ["ann_desc"] = request.announceDEsc ?? "",
                         ["ann_lnk"] = request.reglink ?? "",
-                        ["ann_img"] = ann.AnnounImg ?? "",
+                        ["ann_img"] = imgUrl ?? "",
                         ["grpID"] = grpId.ToString()
                     };
                     if (!isChapter)
-                        await _notificationService.SendAllUsersNotification(
+                        await notif.SendAllUsersNotification(
                             "ann", request.announTitle ?? "New Announcement",
                             request.announceDEsc ?? "A new announcement has been posted", extra);
                     else
-                        await _notificationService.SendGroupNotification(
+                        await notif.SendGroupNotification(
                             grpId, "ann", request.announTitle ?? "New Announcement",
                             request.announceDEsc ?? "A new announcement has been posted", extra);
                 }
-                catch { /* don't fail announcement creation if notification fails */ }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to send announcement notification, announId={Id}, grpId={GrpId}", newId, grpId);
+                }
             });
         }
 
@@ -671,15 +682,36 @@ public class DocumentService : IDocumentService
 {
     private readonly AppDbContext _db;
     private readonly INotificationService _notificationService;
-    public DocumentService(AppDbContext db, INotificationService notificationService) { _db = db; _notificationService = notificationService; }
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<DocumentService> _logger;
+    public DocumentService(AppDbContext db, INotificationService notificationService, IServiceScopeFactory scopeFactory, ILogger<DocumentService> logger) { _db = db; _notificationService = notificationService; _scopeFactory = scopeFactory; _logger = logger; }
 
     public async Task<DocumentListResponse> GetDocumentList(DocumentListRequest request)
     {
         var grpId = int.TryParse(request.grpID, out var gid) ? gid : 0;
         var profileId = int.TryParse(request.memberProfileID, out var pid) ? pid : 0;
-        var docs = await _db.Documents.Include(d => d.ReadStatuses).Where(d => d.GroupId == grpId).OrderByDescending(d => d.CreatedAt)
-            .Select(d => new DocumentItemDto { docID = d.Id.ToString(), docTitle = d.DocTitle, docType = d.DocType, docURL = d.DocURL, createDateTime = d.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"), docAccessType = d.DocAccessType, isRead = d.ReadStatuses.Any(rs => rs.MemberProfileId == profileId) ? "Yes" : "No" }).ToListAsync();
+        var docs = await _db.Documents.Include(d => d.ReadStatuses).Where(d => d.GroupId == grpId)
+            .OrderBy(d => d.DisplayOrder).ThenByDescending(d => d.CreatedAt)
+            .Select(d => new DocumentItemDto { docID = d.Id.ToString(), docTitle = d.DocTitle, docType = d.DocType, docURL = d.DocURL, createDateTime = d.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"), docAccessType = d.DocAccessType, isRead = d.ReadStatuses.Any(rs => rs.MemberProfileId == profileId) ? "Yes" : "No", displayOrder = d.DisplayOrder }).ToListAsync();
         return new DocumentListResponse { status = "0", message = "success", DocumentLsitResult = docs };
+    }
+
+    public async Task<object> ReorderDocuments(List<ReorderDocumentItem> items)
+    {
+        if (items == null || items.Count == 0) return new { status = "1", message = "No items" };
+        var ids = items.Select(i => i.DocID).ToList();
+        var docs = await _db.Documents.Where(d => ids.Contains(d.Id)).ToListAsync();
+        var orderById = items.ToDictionary(i => i.DocID, i => i.DisplayOrder);
+        foreach (var d in docs)
+        {
+            if (orderById.TryGetValue(d.Id, out var order))
+            {
+                d.DisplayOrder = order;
+                d.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+        await _db.SaveChangesAsync();
+        return new { status = "0", message = "Reorder saved successfully" };
     }
 
     public async Task<object> AddDocument(IFormFile file, string grpID, string profileID, string docTitle)
@@ -696,17 +728,25 @@ public class DocumentService : IDocumentService
         // Send push notification for new document
         if (grpId > 0)
         {
+            var scopeFactory = _scopeFactory;
+            var logger = _logger;
+            var docId = doc.Id;
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await _notificationService.SendGroupNotification(
+                    using var scope = scopeFactory.CreateScope();
+                    var notif = scope.ServiceProvider.GetRequiredService<INotificationService>();
+                    await notif.SendGroupNotification(
                         grpId, "Document",
                         docTitle ?? "New Document",
                         $"A new document '{docTitle}' has been shared",
-                        new Dictionary<string, string> { ["docId"] = doc.Id.ToString() });
+                        new Dictionary<string, string> { ["docId"] = docId.ToString() });
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to send document notification, docId={DocId}, grpId={GrpId}", docId, grpId);
+                }
             });
         }
 
@@ -730,7 +770,9 @@ public class EbulletinService : IEbulletinService
 {
     private readonly AppDbContext _db;
     private readonly INotificationService _notificationService;
-    public EbulletinService(AppDbContext db, INotificationService notificationService) { _db = db; _notificationService = notificationService; }
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<EbulletinService> _logger;
+    public EbulletinService(AppDbContext db, INotificationService notificationService, IServiceScopeFactory scopeFactory, ILogger<EbulletinService> logger) { _db = db; _notificationService = notificationService; _scopeFactory = scopeFactory; _logger = logger; }
 
     public async Task<EbulletinListResponse> GetYearWiseList(EbulletinListRequest request)
     {
@@ -749,17 +791,25 @@ public class EbulletinService : IEbulletinService
         // Send push notification for new newsletter
         if (grpId > 0)
         {
+            var scopeFactory = _scopeFactory;
+            var logger = _logger;
+            var ebId = eb.Id;
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await _notificationService.SendGroupNotification(
+                    using var scope = scopeFactory.CreateScope();
+                    var notif = scope.ServiceProvider.GetRequiredService<INotificationService>();
+                    await notif.SendGroupNotification(
                         grpId, "Ebulletin",
                         request.ebulletinTitle ?? "New Newsletter",
                         $"A new newsletter '{request.ebulletinTitle}' has been published",
-                        new Dictionary<string, string> { ["ebulletinId"] = eb.Id.ToString() });
+                        new Dictionary<string, string> { ["ebulletinId"] = ebId.ToString() });
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to send ebulletin notification, ebulletinId={Id}, grpId={GrpId}", ebId, grpId);
+                }
             });
         }
 
@@ -1238,19 +1288,19 @@ public class CelebrationsService : ICelebrationsService
         var birthdays = await _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Join(_db.Users, x => x.mp.UserId, u => u.Id, (x, u) => new { x.mp, x.gm, u })
-            .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Dob != null && x.mp.Dob.EndsWith(dateSuffix))
+            .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Dob != null && x.mp.Dob.Contains(dateSuffix))
             .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.u.FirstName ?? x.mp.MemberName, memberMobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile, memberEmail = x.mp.MemberEmail ?? "", relation = "", msg = "BirthDay", hide_whatsnum = x.mp.HideWhatsnum ?? "0", hide_num = x.mp.HideNum ?? "0", hide_mail = x.mp.HideMail ?? "0" }).ToListAsync();
 
         var anniversaries = await _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Join(_db.Users, x => x.mp.UserId, u => u.Id, (x, u) => new { x.mp, x.gm, u })
-            .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Doa != null && x.mp.Doa.EndsWith(dateSuffix))
+            .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Doa != null && x.mp.Doa.Contains(dateSuffix))
             .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.u.FirstName ?? x.mp.MemberName, memberMobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile, memberEmail = x.mp.MemberEmail ?? "", relation = "", msg = "Anniversary", hide_whatsnum = x.mp.HideWhatsnum ?? "0", hide_num = x.mp.HideNum ?? "0", hide_mail = x.mp.HideMail ?? "0" }).ToListAsync();
 
         // Family birthdays
         var familyBdays = await _db.FamilyMembers
             .Join(_db.GroupMembers, fm => fm.MemberProfileId, gm => gm.MemberProfileId, (fm, gm) => new { fm, gm })
-            .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.fm.Dob != null && x.fm.Dob.EndsWith(dateSuffix))
+            .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.fm.Dob != null && x.fm.Dob.Contains(dateSuffix))
             .Join(_db.MemberProfiles, x => x.fm.MemberProfileId, mp => mp.Id, (x, mp) => new { x.fm, x.gm, mp })
             .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.fm.MemberName, memberMobile = "", memberEmail = "", relation = x.fm.Relationship + " of " + x.mp.MemberName, msg = "BirthDay", hide_whatsnum = "0", hide_num = "0", hide_mail = "0" }).ToListAsync();
 
@@ -1277,7 +1327,7 @@ public class CelebrationsService : ICelebrationsService
             var bdays = await _db.MemberProfiles
                 .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
                 .Join(_db.Groups, x => x.gm.GroupId, g => g.Id, (x, g) => new { x.mp, x.gm, g })
-                .Where(x => x.gm.GroupId != 31185 && x.mp.Dob != null && x.mp.Dob.EndsWith(dateSuffix))
+                .Where(x => x.gm.GroupId != 31185 && x.mp.Dob != null && x.mp.Dob.Contains(dateSuffix))
                 .Select(x => new
                 {
                     MemberID = "M" + x.mp.ImeiMembershipId,
@@ -1304,7 +1354,7 @@ public class CelebrationsService : ICelebrationsService
             var annis = await _db.MemberProfiles
                 .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
                 .Join(_db.Groups, x => x.gm.GroupId, g => g.Id, (x, g) => new { x.mp, x.gm, g })
-                .Where(x => x.gm.GroupId != 31185 && x.mp.Doa != null && x.mp.Doa.EndsWith(dateSuffix))
+                .Where(x => x.gm.GroupId != 31185 && x.mp.Doa != null && x.mp.Doa.Contains(dateSuffix))
                 .Select(x => new
                 {
                     MemberID = "M" + x.mp.ImeiMembershipId,

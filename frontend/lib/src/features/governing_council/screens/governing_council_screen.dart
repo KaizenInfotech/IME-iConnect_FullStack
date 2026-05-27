@@ -23,8 +23,13 @@ class _GoverningCouncilScreenState extends State<GoverningCouncilScreen> {
   @override
   void initState() {
     super.initState();
-    final provider = context.read<GoverningCouncilProvider>();
-    provider.fetchCouncilMembers();
+    // Defer the fetch one frame: fetchCouncilMembers() calls notifyListeners()
+    // synchronously, and calling that during the build pass marks the
+    // InheritedProvider as needing build mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<GoverningCouncilProvider>().fetchCouncilMembers();
+    });
   }
 
   @override
