@@ -1396,7 +1396,10 @@ public class CelebrationsService : ICelebrationsService
                     MemberID = "E" + e.Id,
                     eventDate = e.EventDate,
                     title = e.EventTitle,
-                    eventImg = e.EventImageId,
+                    // Strip inline base64 data URLs — they bloat the list payload
+                    // (each one is ~hundreds of KB). Historical rows still have
+                    // base64 stored in EventImageId from before the upload fix.
+                    eventImg = e.EventImageId != null && e.EventImageId.StartsWith("data:") ? null : e.EventImageId,
                     GroupId = e.GroupId.ToString(),
                     EmailId = "",
                     ContactNumber = "",

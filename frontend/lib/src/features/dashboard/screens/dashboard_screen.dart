@@ -853,7 +853,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: Row(
-          children: [
+          children: [ 
             // Profile pic on LEFT
             _buildCircleAvatar(
               imageUrl: _memberProfilePhotoUrl ?? "",

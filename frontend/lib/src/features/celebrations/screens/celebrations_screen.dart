@@ -55,14 +55,15 @@ class _CelebrationsScreenState extends State<CelebrationsScreen> {
 
     final provider = context.read<CelebrationsProvider>();
 
-    // Fetch month events for calendar markers (national API)
-    await provider.fetchMonthEvents(
-      groupId: _groupId,
-    );
-
-    if (!mounted) return;
-    // Fetch initial tab data
+    // Kick off the visible tab fetch FIRST so its loading flag is set
+    // before the first build — otherwise the list shows the empty state
+    // for the entire duration of the month-events fetch (~2-3s), since
+    // birthdays/anniversaries/events each have their own isXLoading flag
+    // separate from the general isLoading the month fetch uses.
+    // Month events feed only the (collapsed) calendar grid, so we don't
+    // need to await it before showing the visible list.
     _fetchTabData();
+    provider.fetchMonthEvents(groupId: _groupId);
   }
 
   String? get _selectedDateStr {
