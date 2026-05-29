@@ -178,8 +178,12 @@ public class GroupService : IGroupService
     public async Task<SubGroupDetailResponse> GetSubGroupDetail(SubGroupDetailRequest request)
     {
         var sgId = int.TryParse(request.subgrpId, out var sid) ? sid : 0;
-        var members = await _db.SubGroupMembers.Include(sgm => sgm.MemberProfile).Where(sgm => sgm.SubGroupId == sgId)
-            .Select(sgm => new SubGroupMemberDto { profileId = sgm.MemberProfileId.ToString(), memname = sgm.MemberProfile.MemberName, mobile = sgm.MemberProfile.MemberMobile }).ToListAsync();
+        // Read the denormalized name/mobile stored directly on the sub-group
+        // member row. These rows use MemberProfileId=0 (not linked to a member
+        // profile), so the previous Include/Select on MemberProfile generated an
+        // INNER JOIN that silently dropped every row — committees showed empty.
+        var members = await _db.SubGroupMembers.Where(sgm => sgm.SubGroupId == sgId)
+            .Select(sgm => new SubGroupMemberDto { profileId = sgm.MemberProfileId.ToString(), memname = sgm.MemberName, mobile = sgm.MobileNumber }).ToListAsync();
         return new SubGroupDetailResponse { status = "0", message = "success", SubGroupResult = members };
     }
 
@@ -218,6 +222,50 @@ public class GroupService : IGroupService
         var profileId = int.TryParse(request.memberProfileId, out var pid) ? pid : 0;
         var gm = await _db.GroupMembers.FirstOrDefaultAsync(g => g.MemberProfileId == profileId && g.MemberMainId == request.memberMainId);
         if (gm != null) { gm.MyCategory = request.mycategory; await _db.SaveChangesAsync(); }
+        return new { status = "0", message = "success" };
+    }
+    public async Task<object> MoveMemberToChapter(MoveMemberRequest request)
+    {
+        var profileId = int.TryParse(request.memberProfileId, out var pid) ? pid : 0;
+        var fromId = int.TryParse(request.fromGroupId, out var fid) ? fid : 0;
+        var toId = int.TryParse(request.toGroupId, out var tid) ? tid : 0;
+
+        if (profileId == 0) return new { status = "1", message = "Invalid member" };
+        if (toId == 0) return new { status = "1", message = "Invalid target chapter" };
+        if (fromId == toId) return new { status = "0", message = "success" };
+
+        // Target chapter must exist before we move anyone into it.
+        var targetGroupExists = await _db.Groups.AnyAsync(g => g.Id == toId);
+        if (!targetGroupExists) return new { status = "1", message = "Target chapter not found" };
+
+        var rows = await _db.GroupMembers.Where(g => g.MemberProfileId == profileId).ToListAsync();
+        // Row to move out of: the explicit source chapter, else the first active membership.
+        var fromRow = fromId > 0
+            ? rows.FirstOrDefault(g => g.GroupId == fromId)
+            : rows.FirstOrDefault(g => g.IsActive) ?? rows.FirstOrDefault();
+        var targetRow = rows.FirstOrDefault(g => g.GroupId == toId);
+
+        if (targetRow != null)
+        {
+            // Member already belongs to the target chapter — just (re)activate it
+            // and drop the source membership so they're not in both.
+            targetRow.IsActive = true;
+            targetRow.UpdatedAt = DateTime.UtcNow;
+            if (fromRow != null && fromRow.Id != targetRow.Id) _db.GroupMembers.Remove(fromRow);
+        }
+        else if (fromRow != null)
+        {
+            // Move the existing membership to the new chapter.
+            fromRow.GroupId = toId;
+            fromRow.IsActive = true;
+            fromRow.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            // No existing membership at all — create one in the target chapter.
+            _db.GroupMembers.Add(new GroupMember { MemberProfileId = profileId, GroupId = toId, IsActive = true });
+        }
+        await _db.SaveChangesAsync();
         return new { status = "0", message = "success" };
     }
     public async Task<ModuleListResponse> GetGroupModulesList(ModuleListRequest request)

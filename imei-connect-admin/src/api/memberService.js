@@ -18,6 +18,9 @@ export const updateProfile = (data) =>
 export const updateAddress = (data) =>
   api.post('/Member/UpdateAddressDetails', data);
 
+export const moveMemberToChapter = ({ memberProfileId, fromGroupId, toGroupId }) =>
+  api.post('/Group/MoveMemberToChapter', { memberProfileId, fromGroupId, toGroupId });
+
 export const updateFamily = (data) =>
   api.post('/Member/UpdateFamilyDetails', data);
 

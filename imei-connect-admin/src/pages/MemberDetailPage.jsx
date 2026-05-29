@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
-import { getMember, updateProfile, updateAddress, uploadProfilePhoto } from '../api/memberService';
+import { getMember, updateProfile, updateAddress, uploadProfilePhoto, moveMemberToChapter } from '../api/memberService';
 
 const bloodGroupOptions = ['- Select -', 'A +ve', 'A -ve', 'B +ve', 'B -ve', 'AB +ve', 'AB -ve', 'O +ve', 'O -ve'];
 
@@ -39,6 +39,9 @@ export default function MemberDetailPage() {
   // overwriting Chaptr_Brnch_Name with a wrong group's name.
   const groupId = filterGroupId || '';
   const fileInputRef = useRef(null);
+  // The chapter the member was loaded in — used to detect a change on save and
+  // to tell the backend which membership row to move out of. { id, name }
+  const originalChapterRef = useRef({ id: '', name: '' });
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -177,6 +180,13 @@ export default function MemberDetailPage() {
         }
         // ---------------------------------------------------------------------
 
+        // Remember the chapter the member started in so handleSave can detect a
+        // change and move the membership row from this chapter to the new one.
+        originalChapterRef.current = {
+          id: rawChapterId || (loadedChapters.find(c => c.name.trim().toLowerCase() === (resolvedChapter || '').trim().toLowerCase())?.id || ''),
+          name: resolvedChapter || '',
+        };
+
         setForm({
           FirstName: m.First_Name || '',
           MiddleName: m.Middle_Name || '',
@@ -273,6 +283,26 @@ export default function MemberDetailPage() {
         country: form.Country && form.Country !== '- Select -' ? form.Country : (form.ResCountry === '- Select -' ? '' : form.ResCountry),
         pincode: form.PinCode,
       });
+      // Move the member to a different chapter if the dropdown was changed.
+      // The dropdown value is the chapter NAME, so resolve it back to a GroupId.
+      const selectedChapter = form.ChapterBranchName;
+      const orig = originalChapterRef.current;
+      if (
+        selectedChapter &&
+        selectedChapter !== '- Select -' &&
+        selectedChapter.trim().toLowerCase() !== (orig.name || '').trim().toLowerCase()
+      ) {
+        const target = chapterOptions.find(
+          c => c.name.trim().toLowerCase() === selectedChapter.trim().toLowerCase()
+        );
+        if (target?.id && String(target.id) !== String(orig.id)) {
+          await moveMemberToChapter({
+            memberProfileId: profileId,
+            fromGroupId: orig.id || filterGroupId || '',
+            toGroupId: String(target.id),
+          });
+        }
+      }
       setError('');
       alert('Member updated successfully');
       navigate(listReturnUrl);

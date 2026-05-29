@@ -64,6 +64,7 @@ public interface IGroupService
     Task<object> UpdateModuleDashboard(UpdateModuleDashboardRequest request);
     Task<object> RemoveGroupCategory(RemoveCategoryRequest request);
     Task<object> UpdateMemberGroupCategory(UpdateCategoryRequest request);
+    Task<object> MoveMemberToChapter(MoveMemberRequest request);
     Task<ModuleListResponse> GetGroupModulesList(ModuleListRequest request);
     Task<object> GetNotificationCount(object request);
     Task<object> GetEmail(GetEmailRequest request);

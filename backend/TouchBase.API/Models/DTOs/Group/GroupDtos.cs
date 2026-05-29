@@ -77,6 +77,13 @@ public class RemoveCategoryRequest
     public string? memberMainId { get; set; }
 }
 
+public class MoveMemberRequest
+{
+    public string? memberProfileId { get; set; }
+    public string? fromGroupId { get; set; }
+    public string? toGroupId { get; set; }
+}
+
 public class EntityInfoRequest
 {
     public string? grpID { get; set; }

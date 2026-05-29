@@ -122,6 +122,13 @@ public class GroupController : ControllerBase
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
 
+    [HttpPost("MoveMemberToChapter")]
+    public async Task<IActionResult> MoveMemberToChapter([FromBody] MoveMemberRequest request)
+    {
+        try { return Ok(await _groupService.MoveMemberToChapter(request)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
+
     [HttpPost("GetGroupModulesList")]
     public async Task<IActionResult> GetGroupModulesList([FromBody] ModuleListRequest request)
     {
