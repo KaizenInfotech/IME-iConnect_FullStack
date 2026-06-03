@@ -510,13 +510,28 @@ public class MemberService : IMemberService
                     .Select(mp => new { mp.Id, mp.ProfilePic })
                     .ToDictionaryAsync(mp => mp.Id, mp => mp.ProfilePic);
 
+                // The WebGetBODList proc returns member_name from users.FirstName, which is
+                // only the first token for members whose name is split into first/middle/last
+                // (e.g. "Hitesh" instead of "Hitesh Chauhan"). member_profiles.MemberName holds
+                // the full name, so prefer it and fall back to the proc value if absent.
+                var fullNames = await _db.MemberProfiles
+                    .Where(mp => profileIds.Contains(mp.Id) && mp.MemberName != null && mp.MemberName != "")
+                    .Select(mp => new { mp.Id, mp.MemberName })
+                    .ToDictionaryAsync(mp => mp.Id, mp => mp.MemberName);
+
                 var bodBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
                 foreach (var m in rawMembers)
                 {
                     var picUrl = "";
-                    if (int.TryParse(m["profileID"], out var mPid) && pics.ContainsKey(mPid))
+                    int.TryParse(m["profileID"], out var mPid);
+                    if (mPid != 0 && pics.ContainsKey(mPid))
                         picUrl = pics[mPid] ?? "";
                     picUrl = StripAppleDoublePrefix(picUrl);
+
+                    // Prefer the full name from member_profiles; collapse any double spaces.
+                    var fullName = m["memberName"];
+                    if (mPid != 0 && fullNames.TryGetValue(mPid, out var mpName) && !string.IsNullOrWhiteSpace(mpName))
+                        fullName = System.Text.RegularExpressions.Regex.Replace(mpName.Trim(), @"\s+", " ");
                     // Ensure pic is a full URL — bare filenames go in /Documents/directory/
                     if (!string.IsNullOrEmpty(picUrl) && !picUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                     {
@@ -531,7 +546,7 @@ public class MemberService : IMemberService
                         BOD_pkID = m["BOD_pkID"],
                         profileID = m["profileID"],
                         sr_NO = m["sr_NO"],
-                        memberName = m["memberName"],
+                        memberName = fullName,
                         MemberDesignation = m["MemberDesignation"],
                         membermobile = m["membermobile"],
                         Email = m["Email"],

@@ -1258,10 +1258,16 @@ public class AttendanceService : IAttendanceService
             using var conn = new MySqlConnector.MySqlConnection(ProdAttConnStr);
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT a.FK_MemberID, TRIM(CONCAT(COALESCE(m.Member_name,''),' ',COALESCE(m.last_name,''))) as MemberName,
+            // Prefer the authoritative full name from member_profiles; fall back to the
+            // legacy first+middle+last concat (some legacy rows store the whole name in
+            // Member_name, so concatenating parts would duplicate it).
+            cmd.CommandText = @"SELECT a.FK_MemberID,
+                COALESCE(NULLIF(TRIM(CONVERT(mp.MemberName USING utf8mb4)),''),
+                    TRIM(REPLACE(CONCAT(COALESCE(m.Member_name,''),' ',COALESCE(NULLIF(m.middle_name,''),''),' ',COALESCE(m.last_name,'')),'  ',' '))) as MemberName,
                 COALESCE(m.member_profile_photo_path,'') as image
                 FROM tbl_attendancememberdetails a
                 LEFT JOIN member_master_profile m ON a.FK_MemberID = m.pk_member_master_profile_id
+                LEFT JOIN member_profiles mp ON a.FK_MemberID = mp.Id
                 WHERE a.FK_AttendanceID = @aid AND (a.isdeleted=0 OR a.isdeleted IS NULL)";
             cmd.Parameters.AddWithValue("@aid", aid);
             using var reader = await cmd.ExecuteReaderAsync();
@@ -1349,13 +1355,13 @@ public class CelebrationsService : ICelebrationsService
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Join(_db.Users, x => x.mp.UserId, u => u.Id, (x, u) => new { x.mp, x.gm, u })
             .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Dob != null && x.mp.Dob.Contains(dateSuffix))
-            .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.u.FirstName ?? x.mp.MemberName, memberMobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile, memberEmail = x.mp.MemberEmail ?? "", relation = "", msg = "BirthDay", hide_whatsnum = x.mp.HideWhatsnum ?? "0", hide_num = x.mp.HideNum ?? "0", hide_mail = x.mp.HideMail ?? "0" }).ToListAsync();
+            .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.mp.MemberName ?? x.u.FirstName, memberMobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile, memberEmail = x.mp.MemberEmail ?? "", relation = "", msg = "BirthDay", hide_whatsnum = x.mp.HideWhatsnum ?? "0", hide_num = x.mp.HideNum ?? "0", hide_mail = x.mp.HideMail ?? "0" }).ToListAsync();
 
         var anniversaries = await _db.MemberProfiles
             .Join(_db.GroupMembers, mp => mp.Id, gm => gm.MemberProfileId, (mp, gm) => new { mp, gm })
             .Join(_db.Users, x => x.mp.UserId, u => u.Id, (x, u) => new { x.mp, x.gm, u })
             .Where(x => x.gm.GroupId == grpId && x.gm.IsActive && x.mp.Doa != null && x.mp.Doa.Contains(dateSuffix))
-            .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.u.FirstName ?? x.mp.MemberName, memberMobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile, memberEmail = x.mp.MemberEmail ?? "", relation = "", msg = "Anniversary", hide_whatsnum = x.mp.HideWhatsnum ?? "0", hide_num = x.mp.HideNum ?? "0", hide_mail = x.mp.HideMail ?? "0" }).ToListAsync();
+            .Select(x => new { profileId = x.mp.Id.ToString(), groupID = x.gm.GroupId.ToString(), memberName = x.mp.MemberName ?? x.u.FirstName, memberMobile = (x.mp.CountryCode != null ? "+" + x.mp.CountryCode + " " : "") + x.mp.MemberMobile, memberEmail = x.mp.MemberEmail ?? "", relation = "", msg = "Anniversary", hide_whatsnum = x.mp.HideWhatsnum ?? "0", hide_num = x.mp.HideNum ?? "0", hide_mail = x.mp.HideMail ?? "0" }).ToListAsync();
 
         // Family birthdays
         var familyBdays = await _db.FamilyMembers
