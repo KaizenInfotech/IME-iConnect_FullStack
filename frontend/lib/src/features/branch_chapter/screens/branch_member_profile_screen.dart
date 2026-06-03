@@ -99,6 +99,8 @@ class BranchMemberProfileScreen extends StatelessWidget {
   /// e.g. "26/07/2002" → "26 Jul 2002"
   String? _formatDate(String? value) {
     if (value == null || value.trim().isEmpty) return null;
+    // Legacy SQL Server placeholder for "no date" (datetime min). Hide it.
+    if (value.contains('1753')) return null;
     try {
       final parsed = DateFormat('dd/MM/yyyy').parse(value.trim());
       return DateFormat('d MMM yyyy').format(parsed);

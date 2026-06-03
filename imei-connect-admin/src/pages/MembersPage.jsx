@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { getAllMembersPaged, deleteMember } from '../api/memberService';
+import { getCountries } from '../api/utilityService';
+import { validateMobile, validateEmail } from '../utils/contactValidation';
 
 const PAGE_SIZE = 15;
 
@@ -21,9 +23,21 @@ export default function MembersPage() {
   const [error, setError] = useState('');
   const [chapterName, setChapterName] = useState('National Admin');
   const [changeTarget, setChangeTarget] = useState(null);
-  const [changeForm, setChangeForm] = useState({ newMobile: '', newEmail: '' });
+  const [changeForm, setChangeForm] = useState({ newMobile: '', newEmail: '', countryCode: '+91' });
   const [changeSaving, setChangeSaving] = useState(false);
+  const [countries, setCountries] = useState([]);
   const reqIdRef = useRef(0);
+
+  // Country list (for the Change-contact dial-code dropdown). Fetched once.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await getCountries();
+        const list = res.data?.CountryLists || res.data?.CountryCategoryResult?.countries || res.data?.data || [];
+        setCountries(list);
+      } catch { /* dropdown falls back to India only */ }
+    })();
+  }, []);
 
   // Debounce search input → searchTerm (reset to page 1 on change)
   useEffect(() => {
@@ -297,7 +311,7 @@ export default function MembersPage() {
                     {/* Change - blue circle */}
                     <td style={{ padding: '8px 8px', textAlign: 'center' }}>
                       <button
-                        onClick={() => { setChangeTarget(m); setChangeForm({ newMobile: '', newEmail: '' }); }}
+                        onClick={() => { setChangeTarget(m); setChangeForm({ newMobile: '', newEmail: '', countryCode: '+91' }); }}
                         title="Change"
                         style={{
                           width: '26px', height: '26px', borderRadius: '50%',
@@ -359,8 +373,19 @@ export default function MembersPage() {
                 <div style={{ marginBottom: '8px' }}>
                   <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '3px' }}>Mobile Number</label>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <input value="India (+91)" disabled style={{ width: '120px', height: '32px', border: '1px solid #ccc', borderRadius: '4px', padding: '4px 8px', fontSize: '12px', backgroundColor: '#f5f5f5' }} />
-                    <input value={changeForm.newMobile} onChange={(e) => setChangeForm({ ...changeForm, newMobile: e.target.value })} placeholder="Enter Mobile Number" style={{ flex: 1, height: '32px', border: '1px solid #ccc', borderRadius: '4px', padding: '4px 8px', fontSize: '12px', outline: 'none' }} />
+                    <select
+                      value={changeForm.countryCode}
+                      onChange={(e) => setChangeForm({ ...changeForm, countryCode: e.target.value })}
+                      style={{ width: '150px', height: '32px', border: '1px solid #ccc', borderRadius: '4px', padding: '4px 6px', fontSize: '12px', outline: 'none', backgroundColor: '#fff' }}
+                    >
+                      {(countries.length > 0 ? countries : [{ countryName: 'India', countryCode: '+91' }]).map((c, i) => {
+                        const name = c.countryName || c.CountryName;
+                        const code = c.countryCode || c.CountryCode || '';
+                        const dial = code.startsWith('+') ? code : `+${code}`;
+                        return <option key={`${name}-${dial}-${i}`} value={dial}>{name} ({dial})</option>;
+                      })}
+                    </select>
+                    <input type="tel" value={changeForm.newMobile} onChange={(e) => setChangeForm({ ...changeForm, newMobile: e.target.value.replace(/[^\d]/g, '') })} placeholder="Enter Mobile Number" style={{ flex: 1, height: '32px', border: '1px solid #ccc', borderRadius: '4px', padding: '4px 8px', fontSize: '12px', outline: 'none' }} />
                   </div>
                 </div>
                 <div>
@@ -374,7 +399,11 @@ export default function MembersPage() {
               <button
                 disabled={changeSaving}
                 onClick={async () => {
-                  if (!changeForm.newMobile && !changeForm.newEmail) { alert('Please enter new mobile or email'); return; }
+                  const mob = (changeForm.newMobile || '').trim();
+                  const eml = (changeForm.newEmail || '').trim();
+                  if (!mob && !eml) { alert('Please enter new mobile or email'); return; }
+                  if (mob) { const err = validateMobile(changeForm.countryCode, mob); if (err) { alert(err); return; } }
+                  if (eml) { const err = validateEmail(eml); if (err) { alert(err); return; } }
                   setChangeSaving(true);
                   try {
                     const { updateProfile } = await import('../api/memberService');

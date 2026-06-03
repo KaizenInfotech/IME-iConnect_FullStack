@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import { getMember, updateProfile, updateAddress, uploadProfilePhoto, moveMemberToChapter } from '../api/memberService';
+import { validateEmail } from '../utils/contactValidation';
 
 const bloodGroupOptions = ['- Select -', 'A +ve', 'A -ve', 'B +ve', 'B -ve', 'AB +ve', 'AB -ve', 'O +ve', 'O -ve'];
 
@@ -231,6 +232,8 @@ export default function MemberDetailPage() {
     const country = form.Country?.trim();
     if (!firstName) newErrors.FirstName = 'mandatory';
     if (!country || country === '- Select -' || country === '') newErrors.Country = 'mandatory';
+    const emailErr = validateEmail(form.Email, false); // email optional, but must be valid if entered
+    if (emailErr) newErrors.Email = emailErr;
     return newErrors;
   };
 
@@ -430,6 +433,7 @@ export default function MemberDetailPage() {
               <div>
                 <label className={labelCls}>Email ID</label>
                 <input type="email" value={form.Email} onChange={(e) => setField('Email', e.target.value)} className={inputCls} />
+                {errors.Email && <span className="text-[#dd4b39] text-[11px]">{errors.Email}</span>}
               </div>
             </div>
           </div>

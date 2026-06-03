@@ -4,3 +4,4 @@ backend/TouchBase.API/firebase-service-account.json
 production-project/
 backend/TouchBase.API/publish/publish/firebase-service-account.json
 .env
+db_backups/

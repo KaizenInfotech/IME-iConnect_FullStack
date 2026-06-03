@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { createMember } from '../api/memberService';
 import { getCountries } from '../api/utilityService';
 import { getClubList } from '../api/groupService';
+import { validateMobile, validateEmail } from '../utils/contactValidation';
 
 const inputStyle = {
   width: '100%', height: '34px', border: '1px solid #ccc',
@@ -108,6 +109,10 @@ export default function AddMemberPage() {
     if (!form.FirstName.trim()) { alert('Please Enter First Name'); return; }
     if (!form.LastName.trim()) { alert('Please Enter Last Name'); return; }
     if (!form.MemberMobile?.trim()) { alert('Please Enter Mobile Number'); return; }
+    const mobileErr = validateMobile(form.MobileCountryCode, form.MemberMobile);
+    if (mobileErr) { alert(mobileErr); return; }
+    const emailErr = validateEmail(form.MemberEmail, false);
+    if (emailErr) { alert(emailErr); return; }
     if (!form.MembershipId?.trim()) { alert('Please Enter Membership ID'); return; }
     if (!form.ChapterBranchName?.trim()) { alert('Please Select Chapter/Branch Name'); return; }
     setSaving(true);
