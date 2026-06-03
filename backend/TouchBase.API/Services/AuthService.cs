@@ -53,30 +53,24 @@ public class AuthService : IAuthService
             return new LoginResponse { status = "1", message = msg };
         }
 
-        // Generate OTP locally
-        var otp = new Random().Next(1000, 9999).ToString();
-
-        // Save/update user locally
+        // Only existing members of an active chapter may receive an OTP. Unknown / dummy
+        // numbers are rejected without sending an OTP or creating a user row. (This mirrors
+        // the membership gate in VerifyOtp, applied earlier so non-members never get an OTP.)
         var user = await _db.Users.FirstOrDefaultAsync(u => u.MobileNo == request.mobileNo);
-        if (user == null)
+        var isMember = user != null && await _db.GroupMembers
+            .AnyAsync(gm => gm.MemberProfile.UserId == user.Id && gm.Group != null && gm.Group.IsActive);
+        if (!isMember)
         {
-            user = new User
-            {
-                MobileNo = request.mobileNo,
-                CountryCode = request.countryCode,
-                LoginType = request.loginType,
-                Otp = otp,
-                OtpExpiry = DateTime.UtcNow.AddMinutes(5),
-                DeviceToken = request.deviceToken
-            };
-            _db.Users.Add(user);
+            var notRegMsg = _config["UnregisteredNumberMessage"]
+                ?? "This mobile number is not registered. Please contact your chapter admin.";
+            return new LoginResponse { status = "1", message = notRegMsg };
         }
-        else
-        {
-            user.Otp = otp;
-            user.OtpExpiry = DateTime.UtcNow.AddMinutes(5);
-            user.DeviceToken = request.deviceToken;
-        }
+
+        // Generate OTP locally and store it on the member's user record
+        var otp = new Random().Next(1000, 9999).ToString();
+        user!.Otp = otp;
+        user.OtpExpiry = DateTime.UtcNow.AddMinutes(5);
+        user.DeviceToken = request.deviceToken;
         await _db.SaveChangesAsync();
 
         // Send OTP via SMS (fire-and-forget)
