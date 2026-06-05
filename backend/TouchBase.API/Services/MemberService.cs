@@ -639,7 +639,7 @@ public class MemberService : IMemberService
                   ELSE COALESCE(CONVERT(mp.MemberName USING utf8mb4), '')
                 END as MemberName,
                 COALESCE(m.fk_main_member_master_id, mp.UserId) as masterUID, b.FK_group_master_id as grpID,
-                COALESCE(mm.ProfilePic_Path, m.member_profile_photo_path, CONVERT(mp.ProfilePic USING utf8mb4)) as pic,
+                COALESCE(NULLIF(CONVERT(mp.ProfilePic USING utf8mb4), ''), NULLIF(mm.ProfilePic_Path, ''), NULLIF(m.member_profile_photo_path, '')) as pic,
                 COALESCE(d.Designation, b.OtherDesignation, '') as MemberDesignation,
                 COALESCE(m.member_mobile_no, mm.member_mobile, CONVERT(mp.MemberMobile USING utf8mb4)) as membermobile,
                 b.fk_chapter_id as chapterId, COALESCE(cg.group_name, '') as chapterName
