@@ -57,12 +57,18 @@ class _ExecutiveCommitteeScreenState extends State<ExecutiveCommitteeScreen> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: members.length,
-            itemBuilder: (_, index) {
-              return _ExecutiveMemberTile(member: members[index]);
-            },
+          return RefreshIndicator(
+            onRefresh: () => provider.fetchBodList(
+              groupId: widget.groupId,
+            ),
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: members.length,
+              itemBuilder: (_, index) {
+                return _ExecutiveMemberTile(member: members[index]);
+              },
+            ),
           );
         },
       ),

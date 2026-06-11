@@ -250,15 +250,24 @@ class _FindClubScreenState extends State<FindClubScreen> {
                 );
               }
 
-              return ListView.builder(
-                itemCount: list.length,
-                itemBuilder: (_, index) {
-                  final item = list[index];
-                  return ClubCard(
-                    club: item,
-                    onTap: () => _navigateToDetail(item),
-                  );
-                },
+              return RefreshIndicator(
+                onRefresh: () => provider.fetchClubList(
+                  keyword: _keywordController.text.trim(),
+                  country: _countryController.text.trim(),
+                  stateProvinceCity: _stateController.text.trim(),
+                  district: _districtController.text.trim(),
+                ),
+                child: ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: list.length,
+                  itemBuilder: (_, index) {
+                    final item = list[index];
+                    return ClubCard(
+                      club: item,
+                      onTap: () => _navigateToDetail(item),
+                    );
+                  },
+                ),
               );
             },
           ),

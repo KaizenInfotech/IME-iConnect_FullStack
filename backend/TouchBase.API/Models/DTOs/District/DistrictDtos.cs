@@ -96,12 +96,14 @@ public class DistrictCommitteeResponse
 {
     public string? status { get; set; }
     public string? message { get; set; }
-    public List<DistrictCommitteeMemberDto>? Result { get; set; }
+    // Key name matches what the Flutter client reads (CommitteeResult); each row exposes
+    // `name`/`designation` as the app's DistrictCommitteeScreen expects.
+    public List<DistrictCommitteeMemberDto>? CommitteeResult { get; set; }
 }
 
 public class DistrictCommitteeMemberDto
 {
-    public string? memberName { get; set; }
+    public string? name { get; set; }
     public string? designation { get; set; }
     public string? pic { get; set; }
     public string? mobile { get; set; }

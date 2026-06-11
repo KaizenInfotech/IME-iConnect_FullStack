@@ -43,11 +43,14 @@ class _SubCommitteeScreenState extends State<SubCommitteeScreen> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: provider.committees.length,
-            itemBuilder: (_, index) {
-              final committee = provider.committees[index];
+          return RefreshIndicator(
+            onRefresh: () => provider.fetchCommittees(),
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: provider.committees.length,
+              itemBuilder: (_, index) {
+                final committee = provider.committees[index];
               return Container(
                 margin:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -82,6 +85,7 @@ class _SubCommitteeScreenState extends State<SubCommitteeScreen> {
                 ),
               );
             },
+            ),
           );
         },
       ),

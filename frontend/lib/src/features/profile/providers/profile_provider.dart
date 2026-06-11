@@ -118,6 +118,7 @@ class ProfileProvider extends ChangeNotifier {
   }) async {
     _isLoadingBod = true;
     _error = null;
+    _bodMembers = []; // clear stale list so a previous group's bearers don't flash
     notifyListeners();
 
     try {

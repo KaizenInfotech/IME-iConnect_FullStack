@@ -22,6 +22,13 @@ public class MemberService : IMemberService
         _configuration = configuration;
     }
 
+    // Trim and collapse any run of whitespace to a single space so a typed name
+    // like "V V Paul" matches regardless of stray/double spaces. Returns null when blank.
+    private static string? NormalizeSearchText(string? text) =>
+        string.IsNullOrWhiteSpace(text)
+            ? null
+            : System.Text.RegularExpressions.Regex.Replace(text.Trim(), @"\s+", " ");
+
     public async Task<DirectoryListResponse> GetDirectoryList(DirectoryListRequest request)
     {
         var grpId = int.TryParse(request.grpID, out var gid) ? gid : 0;
@@ -31,8 +38,9 @@ public class MemberService : IMemberService
             .Include(gm => gm.MemberProfile)
             .Where(gm => gm.GroupId == grpId && gm.IsActive);
 
-        if (!string.IsNullOrEmpty(request.searchText))
-            query = query.Where(gm => gm.MemberProfile.MemberName!.Contains(request.searchText));
+        var search = NormalizeSearchText(request.searchText);
+        if (search != null)
+            query = query.Where(gm => gm.MemberProfile.MemberName!.Contains(search));
 
         var total = await query.CountAsync();
         var totalPages = (int)Math.Ceiling(total / (double)PageSize);
@@ -206,7 +214,7 @@ public class MemberService : IMemberService
     {
         var pageNo = request.pageNo > 0 ? request.pageNo : 1;
         var pageSize = request.pageSize > 0 ? request.pageSize : 15;
-        var s = string.IsNullOrWhiteSpace(request.searchText) ? null : request.searchText.Trim();
+        var s = NormalizeSearchText(request.searchText);
         var hasGroup = !string.IsNullOrWhiteSpace(request.grpID) && int.TryParse(request.grpID, out var gid) && gid > 0;
 
         // Chapter view: query GroupMembers (one row per member in that chapter).

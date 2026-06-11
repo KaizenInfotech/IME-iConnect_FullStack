@@ -64,14 +64,18 @@ class _GoverningCouncilScreenState extends State<GoverningCouncilScreen> {
             );
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.only(top: 0),
-            itemCount: provider.members.length,
-            separatorBuilder: (_, _) =>
-                const Divider(height: 1, color: AppColors.border),
-            itemBuilder: (_, index) {
-              return _CouncilMemberTile(member: provider.members[index]);
-            },
+          return RefreshIndicator(
+            onRefresh: () => provider.fetchCouncilMembers(),
+            child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(top: 0),
+              itemCount: provider.members.length,
+              separatorBuilder: (_, _) =>
+                  const Divider(height: 1, color: AppColors.border),
+              itemBuilder: (_, index) {
+                return _CouncilMemberTile(member: provider.members[index]);
+              },
+            ),
           );
         },
       ),

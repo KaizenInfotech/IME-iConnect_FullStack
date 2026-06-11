@@ -44,11 +44,14 @@ class _BranchChapterScreenState extends State<BranchChapterScreen> {
             );
           }
 
-          return ListView.separated(
-            itemCount: provider.branches.length,
-            separatorBuilder: (_, _) =>
-                const Divider(height: 1, indent: 16, endIndent: 16),
-            itemBuilder: (_, index) {
+          return RefreshIndicator(
+            onRefresh: () => provider.fetchBranches(),
+            child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: provider.branches.length,
+              separatorBuilder: (_, _) =>
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+              itemBuilder: (_, index) {
               final branch = provider.branches[index];
               return ListTile(
                 title: Text(
@@ -89,6 +92,7 @@ class _BranchChapterScreenState extends State<BranchChapterScreen> {
                 },
               );
             },
+            ),
           );
         },
       ),

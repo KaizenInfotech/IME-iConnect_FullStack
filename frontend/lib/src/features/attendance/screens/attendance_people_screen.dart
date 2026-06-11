@@ -81,10 +81,16 @@ class _AttendancePeopleScreenState extends State<AttendancePeopleScreen> {
       );
     }
 
-    return ListView.builder(
-      itemCount: members.length,
-      itemBuilder: (_, index) {
-        final member = members[index];
+    return RefreshIndicator(
+      onRefresh: () async {
+        await provider.fetchAttendanceMembers(
+            attendanceId: widget.attendanceId);
+      },
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: members.length,
+        itemBuilder: (_, index) {
+          final member = members[index];
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: const BoxDecoration(
@@ -142,6 +148,7 @@ class _AttendancePeopleScreenState extends State<AttendancePeopleScreen> {
           ),
         );
       },
+      ),
     );
   }
 
@@ -154,10 +161,16 @@ class _AttendancePeopleScreenState extends State<AttendancePeopleScreen> {
       );
     }
 
-    return ListView.builder(
-      itemCount: visitors.length,
-      itemBuilder: (_, index) {
-        final visitor = visitors[index];
+    return RefreshIndicator(
+      onRefresh: () async {
+        await provider.fetchAttendanceVisitors(
+            attendanceId: widget.attendanceId);
+      },
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: visitors.length,
+        itemBuilder: (_, index) {
+          final visitor = visitors[index];
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: const BoxDecoration(
@@ -191,6 +204,7 @@ class _AttendancePeopleScreenState extends State<AttendancePeopleScreen> {
           ),
         );
       },
+      ),
     );
   }
 

@@ -85,9 +85,24 @@ class GroupProvider extends ChangeNotifier {
                 .where((g) => g.myCategory == '0')
                 .toList();
 
-            // Auto-select first group if none selected
-            if (_selectedGroup == null && _allGroups.isNotEmpty) {
-              _selectedGroup = _allGroups.first;
+            // Re-resolve the active group against the freshly fetched list so
+            // admin-side changes (moved branch/chapter, renamed group) reflect
+            // immediately. Prefer the currently selected group, then the one
+            // persisted in storage, then fall back to the first group.
+            if (_allGroups.isNotEmpty) {
+              final wantedId = _selectedGroup?.grpId ??
+                  LocalStorage.instance.groupId;
+              GroupResult resolved = _allGroups.first;
+              if (wantedId != null) {
+                for (final g in _allGroups) {
+                  if (g.grpId == wantedId) {
+                    resolved = g;
+                    break;
+                  }
+                }
+              }
+              _selectedGroup = resolved;
+              // Always re-save so clubName/groupId stay in sync with the server.
               _saveGroupToStorage(_selectedGroup!);
             }
 
@@ -145,6 +160,13 @@ class GroupProvider extends ChangeNotifier {
     if (group.myCategory != null) {
       LocalStorage.instance
           .setString(AppConstants.keyIsCategorySession, group.myCategory!);
+    }
+    // Keep the displayed branch/chapter name in sync with the current group.
+    // Without this, clubName stays stuck at whatever was cached on login, so an
+    // admin moving a member to another branch/chapter never reflects in the app
+    // until a fresh login (which is why only uninstall+reinstall used to fix it).
+    if (group.grpName != null && group.grpName!.isNotEmpty) {
+      LocalStorage.instance.setClubName(group.grpName!);
     }
   }
 

@@ -54,12 +54,17 @@ class _BodListScreenState extends State<BodListScreen> {
             );
           }
 
-          return ListView.builder(
-            itemCount: list.length,
-            itemBuilder: (_, index) {
-              final member = list[index];
-              return _BodMemberTile(member: member);
-            },
+          return RefreshIndicator(
+            onRefresh: () =>
+                provider.fetchBodList(groupId: widget.groupId),
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: list.length,
+              itemBuilder: (_, index) {
+                final member = list[index];
+                return _BodMemberTile(member: member);
+              },
+            ),
           );
         },
       ),

@@ -6,8 +6,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/common_app_bar.dart';
 import '../../../core/widgets/empty_state_widget.dart';
-import '../models/branch_chapter_result.dart';
-import '../providers/branch_chapter_provider.dart';
+import '../../profile/models/bod_member_result.dart';
+import '../../profile/providers/profile_provider.dart';
 import 'branch_members_screen.dart';
 
 /// Port of iOS BranchChaptDetailViewController.
@@ -98,8 +98,11 @@ class _BranchChapterDetailScreenState extends State<BranchChapterDetailScreen>
   }
 }
 
-/// Office Bearers tab — shows branch name, address, and office bearer list from Table1.
-class _OfficeBearersTab extends StatelessWidget {
+/// Office Bearers tab — fetches the branch's office bearers from Member/GetBODList
+/// (the curated bod_master source the admin portal and the Executive Committee screen
+/// use) and renders them under the branch name/address header. Previously this read the
+/// client-side-filtered FindClub/GetClubList Table1, which diverged from the portal.
+class _OfficeBearersTab extends StatefulWidget {
   const _OfficeBearersTab({
     required this.branchName,
     required this.branchAddress,
@@ -111,45 +114,74 @@ class _OfficeBearersTab extends StatelessWidget {
   final int groupId;
 
   @override
+  State<_OfficeBearersTab> createState() => _OfficeBearersTabState();
+}
+
+class _OfficeBearersTabState extends State<_OfficeBearersTab> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<ProfileProvider>().fetchBodList(
+            groupId: widget.groupId.toString(),
+          );
+    });
+  }
+
+  Future<void> _refresh() => context.read<ProfileProvider>().fetchBodList(
+        groupId: widget.groupId.toString(),
+      );
+
+  @override
   Widget build(BuildContext context) {
-    return Consumer<BranchChapterProvider>(
+    return Consumer<ProfileProvider>(
       builder: (context, provider, _) {
-        final members = provider.getBranchMembers(groupId);
+        final members = provider.bodMembers;
 
-        return ListView(
-          children: [
-            // Branch name
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-              child: Text(
-                branchName,
-                style:
-                    AppTextStyles.body1.copyWith(fontWeight: FontWeight.w600),
-              ),
-            ),
-            // Address
-            if (branchAddress.isNotEmpty)
+        return RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              // Branch name
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                 child: Text(
-                  branchAddress,
-                  style: AppTextStyles.body2
-                      .copyWith(color: AppColors.textSecondary),
+                  widget.branchName,
+                  style: AppTextStyles.body1
+                      .copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
-            const Divider(height: 1),
-
-            if (members.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(32),
-                child: EmptyStateWidget(
-                  icon: Icons.people,
-                  message: 'No office bearers found',
+              // Address
+              if (widget.branchAddress.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Text(
+                    widget.branchAddress,
+                    style: AppTextStyles.body2
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
                 ),
-              )
-            else
-              ...members.map((m) => _OfficeBearerTile(member: m)),
-          ],
+              const Divider(height: 1),
+
+              if (provider.isLoadingBod && members.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (members.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: EmptyStateWidget(
+                    icon: Icons.people,
+                    message: 'No office bearers found',
+                  ),
+                )
+              else
+                ...members.map((m) => _OfficeBearerTile(member: m)),
+            ],
+          ),
         );
       },
     );
@@ -161,14 +193,15 @@ class _OfficeBearersTab extends StatelessWidget {
 class _OfficeBearerTile extends StatelessWidget {
   const _OfficeBearerTile({required this.member});
 
-  final BranchMemberItem member;
+  final BodMember member;
 
   @override
   Widget build(BuildContext context) {
     final name = member.memberName ?? '';
     final designation = member.designation ?? '';
-    final mobile = member.mobileNo ?? '';
-    final email = member.emailId ?? '';
+    final mobile = member.mobile ?? '';
+    final email = member.email ?? '';
+    final pic = member.pic ?? '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,11 +222,14 @@ class _OfficeBearerTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              const CircleAvatar(
+              CircleAvatar(
                 radius: 20,
                 backgroundColor: AppColors.grayLight,
-                child:
-                    Icon(Icons.person, color: AppColors.primary, size: 24),
+                backgroundImage: pic.isNotEmpty ? NetworkImage(pic) : null,
+                child: pic.isEmpty
+                    ? const Icon(Icons.person,
+                        color: AppColors.primary, size: 24)
+                    : null,
               ),
               const SizedBox(width: 12),
               Expanded(

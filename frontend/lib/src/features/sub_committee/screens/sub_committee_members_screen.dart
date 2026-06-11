@@ -36,12 +36,16 @@ class SubCommitteeMembersScreen extends StatelessWidget {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: members.length,
-            itemBuilder: (_, index) {
-              return _CommitteeMemberTile(member: members[index]);
-            },
+          return RefreshIndicator(
+            onRefresh: () => provider.fetchCommittees(),
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: members.length,
+              itemBuilder: (_, index) {
+                return _CommitteeMemberTile(member: members[index]);
+              },
+            ),
           );
         },
       ),

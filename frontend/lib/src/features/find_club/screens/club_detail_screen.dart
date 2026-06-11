@@ -374,10 +374,13 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
           );
         }
 
-        return ListView.builder(
-          itemCount: members.length,
-          itemBuilder: (_, index) {
-            final member = members[index];
+        return RefreshIndicator(
+          onRefresh: () => provider.fetchClubMembers(grpId: widget.groupId),
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: members.length,
+            itemBuilder: (_, index) {
+              final member = members[index];
             return Container(
               padding: const EdgeInsets.symmetric(
                   horizontal: 16, vertical: 12),
@@ -443,6 +446,7 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
               ),
             );
           },
+          ),
         );
       },
     );

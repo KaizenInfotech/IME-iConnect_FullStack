@@ -97,7 +97,7 @@ public class GroupService : IGroupService
     {
         var userId = int.TryParse(request.masterUID, out var uid) ? uid : 0;
         var memberships = await _db.GroupMembers.Include(gm => gm.Group).Where(gm => gm.MemberProfile.UserId == userId && gm.IsActive)
-            .Select(gm => new GroupResultDto { grpId = gm.GroupId.ToString(), grpName = gm.Group.GrpName, grpImg = gm.Group.GrpImg, grpProfileId = gm.GrpProfileId, grpProfileid = gm.GrpProfileId, myCategory = gm.MyCategory, isGrpAdmin = gm.IsGrpAdmin, moduleId = gm.ModuleId }).ToListAsync();
+            .Select(gm => new GroupResultDto { grpId = gm.GroupId.ToString(), grpName = gm.Group.GrpName, grpImg = gm.Group.GrpImg, grpProfileId = gm.GrpProfileId, myCategory = gm.MyCategory, isGrpAdmin = gm.IsGrpAdmin, moduleId = gm.ModuleId }).ToListAsync();
         return new AllGroupsResponse { status = "0", message = "success", AllGroupListResults = memberships, PersonalGroupListResults = memberships.Where(g => g.myCategory == "Personal").ToList(), SocialGroupListResults = memberships.Where(g => g.myCategory == "Social").ToList(), BusinessGroupListResults = memberships.Where(g => g.myCategory == "Business").ToList() };
     }
 
@@ -1593,7 +1593,8 @@ public class FindRotarianService : IFindRotarianService
             .Join(_db.Groups, x => x.gm.GroupId, g => g.Id, (x, g) => new { x.mp, x.gm, g })
             .Where(x => x.g.IsActive && x.gm.IsActive && x.gm.GroupId != 31185);
 
-        if (!string.IsNullOrEmpty(request.name)) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(request.name));
+        var nameSearch = string.IsNullOrWhiteSpace(request.name) ? null : System.Text.RegularExpressions.Regex.Replace(request.name.Trim(), @"\s+", " ");
+        if (nameSearch != null) query = query.Where(x => x.mp.MemberName != null && x.mp.MemberName.Contains(nameSearch));
         if (!string.IsNullOrEmpty(request.Grade)) query = query.Where(x => x.mp.MembershipGrade == request.Grade);
         if (!string.IsNullOrEmpty(request.Category)) query = query.Where(x => x.mp.Category != null && x.mp.Category.Contains(request.Category));
         if (!string.IsNullOrEmpty(request.memberMobile)) query = query.Where(x => x.mp.MemberMobile != null && x.mp.MemberMobile.Contains(request.memberMobile));
@@ -1673,7 +1674,8 @@ public class DistrictService : IDistrictService
         var page = int.TryParse(request.pageNo, out var p) ? p : 1;
         var size = int.TryParse(request.recordCount, out var s) ? s : 25;
         var query = _db.GroupMembers.Include(gm => gm.MemberProfile).Include(gm => gm.Group).Where(gm => gm.GroupId == grpId && gm.IsActive);
-        if (!string.IsNullOrEmpty(request.searchText)) query = query.Where(gm => gm.MemberProfile.MemberName!.Contains(request.searchText));
+        var searchText = string.IsNullOrWhiteSpace(request.searchText) ? null : System.Text.RegularExpressions.Regex.Replace(request.searchText.Trim(), @"\s+", " ");
+        if (searchText != null) query = query.Where(gm => gm.MemberProfile.MemberName!.Contains(searchText));
         var total = await query.CountAsync();
         var members = await query.Skip((page - 1) * size).Take(size)
             .Select(gm => new DistrictMemberDto { profileId = gm.MemberProfileId.ToString(), memberName = gm.MemberProfile.MemberName, memberMobile = gm.MemberProfile.MemberMobile, masterUID = gm.MemberProfile.UserId.ToString(), pic = gm.MemberProfile.ProfilePic, grpID = gm.GroupId.ToString(), club_name = gm.Group.GrpName }).ToListAsync();
@@ -1683,7 +1685,51 @@ public class DistrictService : IDistrictService
     public async Task<object> GetMemberByClassification(MemberByClassificationRequest request) { await Task.CompletedTask; return new { status = "0", message = "success", Result = new List<object>() }; }
     public async Task<DistrictClubListResponse> GetClubs(DistrictClubsRequest request) { await Task.CompletedTask; return new DistrictClubListResponse { status = "0", message = "success", Clubs = new List<DistrictClubDto>() }; }
     public async Task<object> GetMemberWithDynamicFields(DistrictMemberDetailRequest request) { await Task.CompletedTask; return new { status = "0", message = "success" }; }
-    public async Task<DistrictCommitteeResponse> GetDistrictCommittee(DistrictCommitteeRequest request) { await Task.CompletedTask; return new DistrictCommitteeResponse { status = "0", message = "success", Result = new List<DistrictCommitteeMemberDto>() }; }
+    // Read the district committee from the curated bod_master (same source the admin portal
+    // and the Governing Council / Executive Committee screens use), resolving designation via
+    // tbl_master_designation and falling back to the legacy member_master_profile for the
+    // name/contact of bearers never mapped into member_profiles. Scoped to the requested
+    // group; defaults to National Admin (31185) when none is supplied.
+    public async Task<DistrictCommitteeResponse> GetDistrictCommittee(DistrictCommitteeRequest request)
+    {
+        var grpId = int.TryParse(request.groupId, out var gid) && gid > 0 ? gid : 31185;
+        var members = new List<DistrictCommitteeMemberDto>();
+        try
+        {
+            using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT COALESCE(NULLIF(mp.MemberName,''), NULLIF(TRIM(leg.Member_name),'')) AS name,
+       COALESCE(NULLIF(b.OtherDesignation,''), d.Designation, '') AS designation,
+       COALESCE(NULLIF(b.PhoneNo,''), mp.MemberMobile, leg.member_mobile_no) AS mobile,
+       COALESCE(NULLIF(b.EmailID,''), mp.MemberEmail, leg.member_email_id) AS email
+FROM bod_master b
+LEFT JOIN tbl_master_designation d ON d.Pk_Master_Designation_ID = b.Fk_Master_Designation_ID
+LEFT JOIN member_profiles mp ON mp.Id = b.FK_member_master_profile_id
+LEFT JOIN member_master_profile leg ON leg.pk_member_master_profile_id = b.FK_member_master_profile_id
+WHERE b.FK_group_master_id = @grpId AND (b.Isdeleted = 0 OR b.Isdeleted IS NULL)
+  AND (b.YearFilter LIKE CONCAT('%', YEAR(NOW()), '%') OR b.YearFilter LIKE CONCAT('%', YEAR(NOW())-1, '%'))
+HAVING name IS NOT NULL AND name <> ''
+ORDER BY b.BODorderNumber";
+            cmd.Parameters.AddWithValue("@grpId", grpId);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                members.Add(new DistrictCommitteeMemberDto
+                {
+                    name = reader["name"]?.ToString()?.Trim(),
+                    designation = reader["designation"]?.ToString(),
+                    mobile = reader["mobile"]?.ToString(),
+                    email = reader["email"]?.ToString(),
+                });
+            }
+        }
+        catch { /* prod-DB hiccup: return an empty (not errored) committee list */ }
+        return new DistrictCommitteeResponse { status = "0", message = "success", CommitteeResult = members };
+    }
+
+    private const string ProdConnStr = "server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True";
 }
 
 public class LeaderboardService : ILeaderboardService

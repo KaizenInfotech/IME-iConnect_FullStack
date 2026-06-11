@@ -179,7 +179,6 @@ public class GroupResultDto
     public string? grpName { get; set; }
     public string? grpImg { get; set; }
     public string? grpProfileId { get; set; }
-    public string? grpProfileid { get; set; } // Flutter checks both casings
     public string? myCategory { get; set; }
     public string? isGrpAdmin { get; set; }
     public string? moduleId { get; set; }

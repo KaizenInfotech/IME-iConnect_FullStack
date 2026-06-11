@@ -145,17 +145,24 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
 
                     // Groups list
                     Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: groups.length,
-                        itemBuilder: (_, index) {
-                          final group = groups[index];
-                          return GroupCard(
-                            grpName: group.grpName ?? '',
-                            grpImg: group.grpImg,
-                            isMember: group.isMember,
-                          );
-                        },
+                      child: RefreshIndicator(
+                        onRefresh: () => provider.globalSearchGroup(
+                          memId: LocalStorage.instance.masterUid ?? '',
+                          otherMemId: _searchController.text.trim(),
+                        ),
+                        child: ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          itemCount: groups.length,
+                          itemBuilder: (_, index) {
+                            final group = groups[index];
+                            return GroupCard(
+                              grpName: group.grpName ?? '',
+                              grpImg: group.grpImg,
+                              isMember: group.isMember,
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ],

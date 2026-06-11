@@ -228,10 +228,13 @@ class _DistrictDirectoryScreenState extends State<DistrictDirectoryScreen> {
       );
     }
 
-    return ListView.builder(
-      controller: _scrollController,
-      itemCount: list.length + (provider.hasMorePages ? 1 : 0),
-      itemBuilder: (_, index) {
+    return RefreshIndicator(
+      onRefresh: () => provider.fetchDistrictMembers(groupId: widget.groupId),
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        controller: _scrollController,
+        itemCount: list.length + (provider.hasMorePages ? 1 : 0),
+        itemBuilder: (_, index) {
         if (index == list.length) {
           return const Padding(
             padding: EdgeInsets.all(16),
@@ -247,6 +250,7 @@ class _DistrictDirectoryScreenState extends State<DistrictDirectoryScreen> {
           ),
         );
       },
+      ),
     );
   }
 
@@ -259,11 +263,14 @@ class _DistrictDirectoryScreenState extends State<DistrictDirectoryScreen> {
       );
     }
 
-    return ListView.builder(
-      itemCount: list.length,
-      itemBuilder: (_, index) {
-        final item = list[index];
-        return InkWell(
+    return RefreshIndicator(
+      onRefresh: () => provider.fetchClassifications(groupId: widget.groupId),
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: list.length,
+        itemBuilder: (_, index) {
+          final item = list[index];
+          return InkWell(
           onTap: () => _navigateToClassificationMembers(
               item.classificationName ?? ''),
           child: Container(
@@ -307,6 +314,7 @@ class _DistrictDirectoryScreenState extends State<DistrictDirectoryScreen> {
           ),
         );
       },
+      ),
     );
   }
 }

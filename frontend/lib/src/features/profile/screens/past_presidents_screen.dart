@@ -52,12 +52,17 @@ class _PastPresidentsScreenState extends State<PastPresidentsScreen> {
             );
           }
 
-          return ListView.builder(
-            itemCount: list.length,
-            itemBuilder: (_, index) {
-              final president = list[index];
-              return _PastPresidentTile(president: president);
-            },
+          return RefreshIndicator(
+            onRefresh: () =>
+                provider.fetchPastPresidents(groupId: widget.groupId),
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: list.length,
+              itemBuilder: (_, index) {
+                final president = list[index];
+                return _PastPresidentTile(president: president);
+              },
+            ),
           );
         },
       ),

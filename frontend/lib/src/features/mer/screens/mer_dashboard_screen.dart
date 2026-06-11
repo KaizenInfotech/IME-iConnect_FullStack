@@ -120,10 +120,16 @@ class _MerDashboardScreenState extends State<MerDashboardScreen> {
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: provider.merItems.length,
-      itemBuilder: (_, index) {
+    return RefreshIndicator(
+      onRefresh: () => provider.fetchMerList(
+        financeYear: provider.selectedYear,
+        transType: widget.type,
+      ),
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: provider.merItems.length,
+        itemBuilder: (_, index) {
         final item = provider.merItems[index];
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -158,6 +164,7 @@ class _MerDashboardScreenState extends State<MerDashboardScreen> {
           ),
         );
       },
+      ),
     );
   }
 

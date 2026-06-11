@@ -64,10 +64,18 @@ class _PastEventDetailScreenState extends State<PastEventDetailScreen> {
     return Scaffold(
       backgroundColor: AppColors.scaffoldBackground,
       appBar: CommonAppBar(title: event.title ?? 'Event Detail'),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: RefreshIndicator(
+        onRefresh: () =>
+            context.read<BranchChapterProvider>().fetchPastEventPhotos(
+                  albumId: widget.event.albumId ?? '',
+                  year: widget.year,
+                  groupId: widget.event.groupId ?? '',
+                ),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             // ─── Event Info Card ─────────────────────
             Container(
               width: double.infinity,
@@ -227,6 +235,7 @@ class _PastEventDetailScreenState extends State<PastEventDetailScreen> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

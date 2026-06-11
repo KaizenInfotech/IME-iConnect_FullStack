@@ -51,12 +51,17 @@ class _SubgroupDetailScreenState extends State<SubgroupDetailScreen> {
             );
           }
 
-          return ListView.builder(
-            itemCount: membersList.length,
-            itemBuilder: (_, index) {
-              final member = membersList[index];
-              return SubgroupMemberTile(member: member);
-            },
+          return RefreshIndicator(
+            onRefresh: () =>
+                provider.fetchSubGroupDetail(subgrpId: widget.subgrpId),
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: membersList.length,
+              itemBuilder: (_, index) {
+                final member = membersList[index];
+                return SubgroupMemberTile(member: member);
+              },
+            ),
           );
         },
       ),

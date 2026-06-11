@@ -106,24 +106,29 @@ class _BranchMembersScreenState extends State<BranchMembersScreen> {
                       icon: Icons.person_search,
                       message: 'No member found',
                     )
-                  : ListView.separated(
-                      itemCount: provider.branchMemberDetails.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (_, index) {
-                        final member = provider.branchMemberDetails[index];
-                        return _MemberListTile(
-                          member: member,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    BranchMemberProfileScreen(member: member),
-                              ),
-                            );
-                          },
-                        );
-                      },
+                  : RefreshIndicator(
+                      onRefresh: () => provider
+                          .fetchBranchMemberDetails(widget.groupId),
+                      child: ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: provider.branchMemberDetails.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (_, index) {
+                          final member = provider.branchMemberDetails[index];
+                          return _MemberListTile(
+                            member: member,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      BranchMemberProfileScreen(member: member),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
                     ),
             ),
           ],

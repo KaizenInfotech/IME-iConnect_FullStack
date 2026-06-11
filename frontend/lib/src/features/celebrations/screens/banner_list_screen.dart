@@ -123,12 +123,16 @@ class _BannerListScreenState extends State<BannerListScreen> {
                       icon: Icons.groups,
                       message: 'No clubs found',
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _bannerList.length,
-                      itemBuilder: (_, index) {
-                        return _buildBannerCard(_bannerList[index]);
-                      },
+                  : RefreshIndicator(
+                      onRefresh: _loadBannerList,
+                      child: ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _bannerList.length,
+                        itemBuilder: (_, index) {
+                          return _buildBannerCard(_bannerList[index]);
+                        },
+                      ),
                     ),
     );
   }
