@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/storage/local_storage.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/utils/date_utils.dart';
 import '../../../core/widgets/common_app_bar.dart';
 import '../../../core/widgets/common_toast.dart';
 import '../../celebrations/providers/celebrations_provider.dart';
@@ -106,17 +107,9 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
     storage.setString('hide_mail', _emailStatus.toString());
   }
 
-  /// Format date from dd/MM/yyyy to d MMM yyyy.
-  String? _formatDate(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    if (value.contains('1753')) return null;
-    try {
-      final parsed = DateFormat('dd/MM/yyyy').parse(value.trim());
-      return DateFormat('d MMM yyyy').format(parsed);
-    } catch (_) {
-      return value;
-    }
-  }
+  /// Show the real birth/anniversary year as "d MMM yyyy" (e.g. "15 Mar 1975").
+  /// Hides placeholder/junk years (SQL min 1753, blank rows, future dates).
+  String? _formatDate(String? value) => AppDateUtils.formatBirthDate(value);
 
   /// iOS: firstName + middleName + lastName
   String _nameFromApi(Map<String, dynamic> data) {
@@ -299,12 +292,11 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
   /// Show date picker for DOB or Anniversary, update state and call API.
   Future<void> _pickDate({required bool isDob}) async {
     final rawValue = isDob ? _dob : _doa;
-    DateTime initial = DateTime.now();
-    try {
-      if (rawValue.isNotEmpty && !rawValue.contains('1753')) {
-        initial = DateFormat('dd/MM/yyyy').parse(rawValue.trim());
-      }
-    } catch (_) {}
+    // Open the picker on the stored date (handles yyyy-MM-dd and dd/MM/yyyy);
+    // falls back to today for empty/placeholder values.
+    final parsed = AppDateUtils.parseFlexibleDate(rawValue);
+    final DateTime initial =
+        (parsed != null && parsed.year >= 1900) ? parsed : DateTime.now();
 
     final picked = await showDatePicker(
       context: context,

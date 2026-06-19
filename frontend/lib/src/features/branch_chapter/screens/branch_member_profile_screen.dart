@@ -1,10 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/utils/date_utils.dart';
 import '../../../core/widgets/common_app_bar.dart';
 import '../models/branch_chapter_result.dart';
 
@@ -95,19 +95,9 @@ class BranchMemberProfileScreen extends StatelessWidget {
     );
   }
 
-  /// Format date from API format (dd/MM/yyyy) to display format (d MMM yyyy)
-  /// e.g. "26/07/2002" → "26 Jul 2002"
-  String? _formatDate(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    // Legacy SQL Server placeholder for "no date" (datetime min). Hide it.
-    if (value.contains('1753')) return null;
-    try {
-      final parsed = DateFormat('dd/MM/yyyy').parse(value.trim());
-      return DateFormat('d MMM yyyy').format(parsed);
-    } catch (_) {
-      return value;
-    }
-  }
+  /// Show the real birth/anniversary year as "d MMM yyyy" (e.g. "26 Jul 2002").
+  /// Hides placeholder/junk years (SQL min 1753, blank rows, future dates).
+  String? _formatDate(String? value) => AppDateUtils.formatBirthDate(value);
 
   List<Widget> _buildDetailRows() {
     final rows = <_DetailRow>[];

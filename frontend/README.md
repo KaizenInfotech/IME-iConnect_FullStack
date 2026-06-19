@@ -17,7 +17,7 @@ samples, guidance on mobile development, and a full API reference.
 
 
 
-new android version - 2.3.6+22 
-New Ios version - 9.0.2+4
+new android version - 2.3.6+24 
+New Ios version - 9.0.4+6
 
-
+2.3.8+24  and ios 9.0.4+6

@@ -1,6 +1,5 @@
-import 'package:intl/intl.dart';
-
 import '../../../core/models/base_model.dart';
+import '../../../core/utils/date_utils.dart';
 
 /// Port of iOS ZoneChapterResult — zone and chapter dropdown data.
 /// API: FindRotarian/GetZonechapterlist
@@ -429,26 +428,9 @@ class RotarianDetail extends BaseModel {
   /// Profile key-value pairs for display (iOS: JitoProfileViewController fields)
   /// Matches profile.PNG: Chapter/Branch Name, Membership No., Membership Grade,
   /// Category, Email, Date of Birth, Date of Anniversary.
-  /// Check if a date string is a valid displayable date
-  /// (filters out SQL Server placeholder dates like 01/01/1753)
-  bool _isValidDate(String? value) {
-    if (value == null || value.trim().isEmpty) return false;
-    return true;
-  }
-
-  /// Format date from API format (dd/MM/yyyy) to display format (d MMM yyyy)
-  /// e.g. "26/07/2002" → "26 Jul 2002"
-  String? _formatDate(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    // Legacy SQL Server placeholder for "no date" (datetime min). Hide it.
-    if (value.contains('1753')) return null;
-    try {
-      final parsed = DateFormat('dd/MM/yyyy').parse(value.trim());
-      return DateFormat('d MMM yyyy').format(parsed);
-    } catch (_) {
-      return value;
-    }
-  }
+  /// Show the real birth/anniversary year as "d MMM yyyy" (e.g. "26 Jul 2002").
+  /// Hides placeholder/junk years (SQL min 1753, blank rows, future dates).
+  String? _formatDate(String? value) => AppDateUtils.formatBirthDate(value);
 
   List<MapEntry<String, String>> get profileFields {
     final fields = <MapEntry<String, String>>[];
@@ -464,12 +446,8 @@ class RotarianDetail extends BaseModel {
     add('Membership Grade', membershipGrade);
     add('Category', categoryName);
     add('Email', memberEmail ?? email);
-    final dobValue = _isValidDate(dob) ? _formatDate(dob) : null;
-    add('Date of Birth', dobValue);
-    final annivValue = _isValidDate(doa)
-        ? _formatDate(doa)
-        : (_isValidDate(anniversary) ? _formatDate(anniversary) : null);
-    add('Date of Anniversary', annivValue);
+    add('Date of Birth', _formatDate(dob));
+    add('Date of Anniversary', _formatDate(doa) ?? _formatDate(anniversary));
     add('Company Name', companyName);
     add('Address', address);
     add('Pincode', pincode);

@@ -208,4 +208,36 @@ class AppDateUtils {
   static bool isValidDate(String? dateString, String format) {
     return tryParse(dateString, format) != null;
   }
+
+  // ═══════════════════════════════════════════════════════
+  // Birthday / anniversary display
+  // ═══════════════════════════════════════════════════════
+
+  /// Parse a stored DOB/anniversary that may arrive as "yyyy-MM-dd",
+  /// "dd/MM/yyyy", or "dd-MM-yyyy" (optionally with a trailing time portion).
+  /// Returns null when the value is empty or unparseable.
+  static DateTime? parseFlexibleDate(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final datePart = value.trim().split(' ').first.split('T').first;
+    for (final fmt in const ['yyyy-MM-dd', 'dd/MM/yyyy', 'dd-MM-yyyy']) {
+      try {
+        return DateFormat(fmt).parseStrict(datePart);
+      } catch (_) {
+        // try next format
+      }
+    }
+    return null;
+  }
+
+  /// Format a DOB/anniversary for display as "d MMM yyyy" (e.g. "15 Mar 1975").
+  /// Returns null when the value is empty, unparseable, or carries a
+  /// placeholder/implausible year — SQL min 1753, blank rows like 0991, or any
+  /// future-dated year — so the UI can hide the date instead of showing a junk
+  /// year.
+  static String? formatBirthDate(String? value) {
+    final parsed = parseFlexibleDate(value);
+    if (parsed == null) return null;
+    if (parsed.year < 1900 || parsed.year > DateTime.now().year) return null;
+    return DateFormat('d MMM yyyy').format(parsed);
+  }
 }
