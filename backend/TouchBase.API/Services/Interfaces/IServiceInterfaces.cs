@@ -161,6 +161,7 @@ public interface IGalleryService
     Task<object> AddMer(AddMerRequest request);
     Task<object> UpdateMer(UpdateMerRequest request);
     Task<object> DeleteMer(string merId);
+    Task<object> UploadMer(IFormFile file, string? title, string? financeYear, string? transType);
 }
 
 public interface IAttendanceService

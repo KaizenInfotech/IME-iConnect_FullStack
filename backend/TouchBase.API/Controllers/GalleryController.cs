@@ -102,6 +102,14 @@ public class GalleryController : ControllerBase
         try { return Ok(await _galleryService.DeleteMer(request.MER_ID ?? "")); }
         catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
     }
+
+    [HttpPost("UploadMER")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadMER([FromForm] IFormFile file, [FromForm] string? title, [FromForm] string? financeYear, [FromForm] string? transType)
+    {
+        try { return Ok(await _galleryService.UploadMer(file, title, financeYear, transType)); }
+        catch (Exception ex) { return Ok(new { status = "1", message = ex.Message }); }
+    }
 }
 
 public class AddMerRequest

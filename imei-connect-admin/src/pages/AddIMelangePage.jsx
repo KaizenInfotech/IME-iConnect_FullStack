@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createMerItem } from '../api/merService';
+import { createMerItem, uploadMerFile } from '../api/merService';
 
 const titleOptions = [
   '-Select-', 'January', 'February', 'March', 'April', 'May', 'June',
@@ -39,11 +39,23 @@ export default function AddIMelangePage() {
     setSaving(true);
     setError('');
     try {
+      // For an attached file, upload the PDF first and persist the returned
+      // public URL — storing only the filename leaves an unresolvable path.
+      let filePath = '';
+      if (form.SaveType === 'file') {
+        const uploadRes = await uploadMerFile(form.File, form.Title, String(new Date().getFullYear()), '2');
+        filePath = uploadRes.data?.url || '';
+        if (!filePath) {
+          setError(uploadRes.data?.message || 'File upload failed');
+          setSaving(false);
+          return;
+        }
+      }
       await createMerItem({
         Title: form.Title,
         PublishDate: form.PublishDate,
         Link: form.SaveType === 'link' ? form.Link : '',
-        FilePath: form.SaveType === 'file' ? form.File?.name : '',
+        FilePath: filePath,
         TransType: '2',
         FinanceYear: String(new Date().getFullYear()),
       });

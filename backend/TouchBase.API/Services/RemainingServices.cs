@@ -883,7 +883,39 @@ public class EbulletinService : IEbulletinService
 public class GalleryService : IGalleryService
 {
     private readonly AppDbContext _db;
-    public GalleryService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; }
+    private readonly IConfiguration _configuration;
+    public GalleryService(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration configuration) { _db = db; _configuration = configuration; }
+
+    /// Stores an uploaded MER / iMelange PDF under wwwroot/uploads/mer/ and
+    /// returns its public absolute URL. The admin panel persists that URL as
+    /// the MER FilePath (via AddMer), so the file opens directly instead of
+    /// resolving to a bare filename. Does not touch the database.
+    public async Task<object> UploadMer(IFormFile file, string? title, string? financeYear, string? transType)
+    {
+        if (file == null || file.Length == 0)
+            return new { status = "1", message = "No file provided" };
+
+        // Name the file from the type + title + finance year, e.g.
+        // mer_January_2026.pdf or imelange_January_2026.pdf (TransType "2" = iMelange).
+        // Strip anything that isn't alphanumeric so the name is path-safe; fall
+        // back to a GUID if no usable title is supplied so a file is never unnamed.
+        var prefix = transType == "2" ? "imelange" : "mer";
+        var ext = Path.GetExtension(file.FileName);
+        var safeTitle = System.Text.RegularExpressions.Regex.Replace(title ?? "", "[^A-Za-z0-9]", "");
+        var safeYear = System.Text.RegularExpressions.Regex.Replace(financeYear ?? "", "[^A-Za-z0-9]", "");
+        var fileName = string.IsNullOrEmpty(safeTitle)
+            ? $"{prefix}_{Guid.NewGuid():N}{ext}"
+            : $"{prefix}_{safeTitle}{(string.IsNullOrEmpty(safeYear) ? "" : $"_{safeYear}")}{ext}";
+        var dir = Path.Combine("wwwroot", "uploads", "mer");
+        Directory.CreateDirectory(dir);
+        await using var stream = new FileStream(Path.Combine(dir, fileName), FileMode.Create);
+        await file.CopyToAsync(stream);
+
+        var relativePath = $"/uploads/mer/{fileName}";
+        var appBaseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? "";
+        var url = !string.IsNullOrEmpty(appBaseUrl) ? $"{appBaseUrl}{relativePath}" : relativePath;
+        return new { status = "0", message = "success", url, fileName = file.FileName };
+    }
 
     public async Task<AlbumListResponse> GetAlbumsList(AlbumListRequest request)
     {
