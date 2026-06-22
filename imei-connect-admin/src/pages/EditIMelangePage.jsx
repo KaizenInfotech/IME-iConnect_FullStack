@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
-import { getMerItems, updateMerItem } from '../api/merService';
+import { getMerItems, updateMerItem, uploadMerFile } from '../api/merService';
 
 const titleOptions = [
   '-Select-', 'January', 'February', 'March', 'April', 'May', 'June',
@@ -42,6 +42,7 @@ export default function EditIMelangePage() {
     Link: '',
     File: null,
     FilePath: '',
+    FinanceYear: '',
   });
 
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function EditIMelangePage() {
             Link: item.Link || '',
             File: null,
             FilePath: item.File_Path || '',
+            FinanceYear: item.FinanceYear || (stateYear ? String(stateYear) : '') || String(new Date().getFullYear()),
           });
           if (hasFile) {
             setExistingFileName((item.File_Path || '').split('/').pop() || '');
@@ -85,11 +87,27 @@ export default function EditIMelangePage() {
     setSaving(true);
     setError('');
     try {
+      // Resolve the file path: if a new PDF was attached, upload it first and
+      // use the returned URL; otherwise keep the existing uploaded file's URL.
+      let filePath = '';
+      if (form.SaveType === 'file') {
+        if (form.File) {
+          const uploadRes = await uploadMerFile(form.File, form.Title, form.FinanceYear, '2');
+          filePath = uploadRes.data?.url || '';
+          if (!filePath) {
+            setError(uploadRes.data?.message || 'File upload failed');
+            setSaving(false);
+            return;
+          }
+        } else {
+          filePath = form.FilePath || '';
+        }
+      }
       await updateMerItem(id, {
         Title: form.Title,
         PublishDate: form.PublishDate,
         Link: form.SaveType === 'link' ? form.Link : '',
-        FilePath: form.SaveType === 'file' ? (form.FilePath || form.File?.name || '') : '',
+        FilePath: filePath,
         TransType: '2',
       });
       alert('iMelange updated successfully');
