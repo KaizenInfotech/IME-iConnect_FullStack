@@ -617,7 +617,19 @@ public class MemberService : IMemberService
         catch (Exception ex) { return new { status = "1", message = ex.Message }; }
     }
 
-    private const string ProdConnStr = "server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True;Allow User Variables=true";
+    // Resolved from config, not hardcoded: the old literal pointed at a host that no
+    // longer exists, so every raw-SQL read here failed silently and fell back to EF.
+    // Falls back to DefaultConnection, which already points at the live DB.
+    private string ProdConnStr => ResolveProdConnStr(_configuration);
+
+    internal static string ResolveProdConnStr(IConfiguration config)
+    {
+        var cs = config["ConnectionStrings:ProdConnection"]
+                 ?? config["ConnectionStrings:DefaultConnection"] ?? "";
+        // Stored procs and multi-statement queries below need user variables enabled.
+        return cs.Contains("Allow User Variables", StringComparison.OrdinalIgnoreCase)
+            ? cs : cs.TrimEnd(';') + ";Allow User Variables=true";
+    }
 
     // Strip macOS AppleDouble sidecar prefix ("._") from the filename portion
     // of an image path. Some pic URLs in the legacy DB point at "._foo.jpg"

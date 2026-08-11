@@ -21,7 +21,7 @@ public class EventService : IEventService
     private const string OldApiBase = "https://api.imeiconnect.com/V2/api";
     public EventService(AppDbContext db, INotificationService notificationService, IHttpClientFactory httpClientFactory, IConfiguration configuration, IServiceScopeFactory scopeFactory, ILogger<EventService> logger) { _db = db; _notificationService = notificationService; _httpClientFactory = httpClientFactory; _configuration = configuration; _scopeFactory = scopeFactory; _logger = logger; }
 
-    private const string ProdConnStr = "server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True;Allow User Variables=true";
+    private string ProdConnStr => MemberService.ResolveProdConnStr(_configuration);
 
     public async Task<EventListResponse> GetEventList(EventListRequest request)
     {

@@ -84,7 +84,9 @@ public class DashboardService : IDashboardService
 public class GroupService : IGroupService
 {
     private readonly AppDbContext _db;
-    public GroupService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; }
+    private readonly IConfiguration _configuration;
+    public GroupService(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration configuration) { _db = db; _configuration = configuration; }
+    private string ProdConnStr => MemberService.ResolveProdConnStr(_configuration);
 
     public async Task<CountryCategoryResponse> GetAllCountriesAndCategories()
     {
@@ -424,7 +426,7 @@ public class GroupService : IGroupService
         // Soft delete from group_master (production table)
         try
         {
-            using var conn = new MySqlConnector.MySqlConnection("server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True");
+            using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE group_master SET isdeleted=1 WHERE pk_group_master_id=@id";
@@ -1056,7 +1058,8 @@ public class GalleryService : IGalleryService
 public class AttendanceService : IAttendanceService
 {
     private readonly AppDbContext _db;
-    public AttendanceService(AppDbContext db, IHttpClientFactory httpClientFactory) { _db = db; }
+    private readonly IConfiguration _configuration;
+    public AttendanceService(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration configuration) { _db = db; _configuration = configuration; }
 
     public async Task<object> GetAttendanceListNew(AttendanceListRequest request)
     {
@@ -1319,7 +1322,7 @@ public class AttendanceService : IAttendanceService
         return new { TBAttendanceMemberDetailsResult = new { status = "0", message = "success", AttendanceMemberResult = localMembers } };
     }
 
-    private const string ProdAttConnStr = "server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True;Allow User Variables=true";
+    private string ProdAttConnStr => MemberService.ResolveProdConnStr(_configuration);
 
     public async Task<object> GetAttendanceVisitorsDetails(AttendanceMemberDetailRequest request)
     {
@@ -1699,7 +1702,8 @@ public class FindRotarianService : IFindRotarianService
 public class DistrictService : IDistrictService
 {
     private readonly AppDbContext _db;
-    public DistrictService(AppDbContext db) => _db = db;
+    private readonly IConfiguration _configuration;
+    public DistrictService(AppDbContext db, IConfiguration configuration) { _db = db; _configuration = configuration; }
     public async Task<DistrictMemberListResponse> GetDistrictMemberList(DistrictMemberListRequest request)
     {
         var grpId = int.TryParse(request.grpID, out var gid) ? gid : 0;
@@ -1761,7 +1765,7 @@ ORDER BY b.BODorderNumber";
         return new DistrictCommitteeResponse { status = "0", message = "success", CommitteeResult = members };
     }
 
-    private const string ProdConnStr = "server=101.53.148.126;database=imei_new;user=admin_mysql_db;password=o27AvGxQQGTBEfrlpD7G1;AllowZeroDateTime=True;ConvertZeroDateTime=True";
+    private string ProdConnStr => MemberService.ResolveProdConnStr(_configuration);
 }
 
 public class LeaderboardService : ILeaderboardService
