@@ -1365,11 +1365,15 @@ public class AttendanceService : IAttendanceService
 public class CelebrationsService : ICelebrationsService
 {
     private readonly AppDbContext _db;
+    private readonly IConfiguration _configuration;
 
-    public CelebrationsService(AppDbContext db, IHttpClientFactory httpClientFactory)
+    public CelebrationsService(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
         _db = db;
+        _configuration = configuration;
     }
+
+    private string ProdConnStr => MemberService.ResolveProdConnStr(_configuration);
 
     public async Task<MonthEventListResponse> GetMonthEventList(MonthEventListRequest request)
     {
@@ -1479,6 +1483,53 @@ public class CelebrationsService : ICelebrationsService
         }
         else if (type == "E")
         {
+            // Events live in `event_master` — that is what the admin portal writes
+            // (EventService.AddEvent) and what the Events list reads
+            // (EventService.GetEventList). Reading the local `events` table here meant
+            // the Events & Celebrations tab and the calendar markers never showed any
+            // event created since the switch to event_master.
+            try
+            {
+                using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
+                await conn.OpenAsync();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"SELECT pk_event_master_id, fk_group_master_id, event_title, event_desc,
+                        DATE_FORMAT(event_date, '%Y-%m-%d %H:%i:%s') AS eventDate,
+                        event_img, event_venue, registration_link
+                    FROM event_master
+                    WHERE (isdeleted = 0 OR isdeleted IS NULL)
+                      AND event_date IS NOT NULL
+                      AND DATE_FORMAT(event_date, '%Y-%m') = @month
+                    ORDER BY event_date";
+                cmd.Parameters.AddWithValue("@month", selectedDate.ToString("yyyy-MM"));
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var img = reader["event_img"]?.ToString();
+                    events.Add(new
+                    {
+                        MemberID = "E" + reader["pk_event_master_id"],
+                        eventDate = reader["eventDate"]?.ToString(),
+                        title = reader["event_title"]?.ToString(),
+                        // Historical rows can still hold a base64 data URL; those bloat
+                        // the list payload and the mobile can't render them.
+                        eventImg = img != null && img.StartsWith("data:") ? null : img,
+                        GroupId = reader["fk_group_master_id"]?.ToString(),
+                        EmailId = "",
+                        ContactNumber = "",
+                        Description = reader["event_desc"]?.ToString(),
+                        EventTime = (string?)null,
+                        type = "Event",
+                        MemberProfileId = (string?)null,
+                        EventVenue = reader["event_venue"]?.ToString(),
+                        RegLink = reader["registration_link"]?.ToString()
+                    });
+                }
+                return new { TBEventListTypeResult = new { status = "0", message = "success", updatedOn = DateTime.Now.ToString("yyyy-MM-dd HHmm:ss"), Result = new { Events = events } } };
+            }
+            catch (Exception ex) { System.Console.WriteLine($"[GetMonthEventListTypeWiseNational] event_master error: {ex.Message}"); }
+
+            // Fallback to the local `events` table (rows written by the scheduled-publish path).
             var evts = await _db.Events.Where(e => e.EventDate != null && e.EventDate.Contains(selectedDate.ToString("yyyy-MM")))
                 .Select(e => new
                 {
