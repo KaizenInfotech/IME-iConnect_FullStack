@@ -26,6 +26,7 @@ public class EventService : IEventService
     public async Task<EventListResponse> GetEventList(EventListRequest request)
     {
         var grpId = int.TryParse(request.grpId, out var gid) ? gid : 0;
+        var profileIdRaw = int.TryParse(request.groupProfileID, out var prawId) ? prawId : 0;
 
         // Read from event_master table (same as production web app)
         try
@@ -33,6 +34,9 @@ public class EventService : IEventService
             using var conn = new MySqlConnector.MySqlConnection(ProdConnStr);
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
+            // RSVP tallies + the caller's own response come from event_responses,
+            // which is keyed by the same id the app shows here (pk_event_master_id)
+            // because AnswerEvent stores EventId = the id from this list.
             var sql = @"SELECT e.pk_event_master_id as eventID, e.event_img as eventImg, e.event_title as eventTitle,
                 DATE_FORMAT(e.event_date, '%d-%b-%Y %H:%i:%s') as eventDateTime,
                 DATE_FORMAT(e.publish_Date, '%d-%m-%Y %H:%i:%s') as publishDate,
@@ -40,7 +44,11 @@ public class EventService : IEventService
                 e.event_venue as venue, e.venue_lat as venueLat, e.venue_long as venueLon,
                 e.fk_group_master_id as grpID,
                 COALESCE(a.MembersCount, 0) as Attendance,
-                CASE WHEN COALESCE(g.memberCount, 0) > 0 THEN ROUND(COALESCE(a.MembersCount, 0) * 100.0 / g.memberCount, 2) ELSE 0 END as AttendancePercent
+                CASE WHEN COALESCE(g.memberCount, 0) > 0 THEN ROUND(COALESCE(a.MembersCount, 0) * 100.0 / g.memberCount, 2) ELSE 0 END as AttendancePercent,
+                (SELECT COUNT(*) FROM event_responses r WHERE r.EventId = e.pk_event_master_id AND r.JoiningStatus='Going') as goingCount,
+                (SELECT COUNT(*) FROM event_responses r WHERE r.EventId = e.pk_event_master_id AND r.JoiningStatus='Maybe') as maybeCount,
+                (SELECT COUNT(*) FROM event_responses r WHERE r.EventId = e.pk_event_master_id AND r.JoiningStatus='NotGoing') as notgoingCount,
+                (SELECT r.JoiningStatus FROM event_responses r WHERE r.EventId = e.pk_event_master_id AND r.MemberProfileId=@profileId LIMIT 1) as myResponse
                 FROM event_master e
                 LEFT JOIN attentance_master a ON a.FK_eventID = e.pk_event_master_id AND (a.isdeleted=0 OR a.isdeleted IS NULL)
                 LEFT JOIN group_master g ON e.fk_group_master_id = g.pk_group_master_id
@@ -50,6 +58,7 @@ public class EventService : IEventService
             sql += " ORDER BY e.event_date DESC";
             cmd.CommandText = sql;
             cmd.Parameters.AddWithValue("@grpId", grpId);
+            cmd.Parameters.AddWithValue("@profileId", profileIdRaw);
             if (!string.IsNullOrEmpty(request.searchText))
                 cmd.Parameters.AddWithValue("@search", $"%{request.searchText}%");
             using var reader = await cmd.ExecuteReaderAsync();
@@ -70,6 +79,10 @@ public class EventService : IEventService
                     grpID = reader["grpID"]?.ToString(),
                     Attendance = reader["Attendance"]?.ToString(),
                     AttendancePercent = reader["AttendancePercent"]?.ToString(),
+                    goingCount = reader["goingCount"]?.ToString(),
+                    maybeCount = reader["maybeCount"]?.ToString(),
+                    notgoingCount = reader["notgoingCount"]?.ToString(),
+                    myResponse = reader["myResponse"] is DBNull ? null : reader["myResponse"]?.ToString(),
                 });
             }
             return new EventListResponse
@@ -128,12 +141,18 @@ public class EventService : IEventService
                 e.expiry_Date as expiryDate, e.rsvp_enable as rsvpEnable, e.questionEnable as isQuesEnable,
                 e.event_type as eventType, e.fk_group_master_id as grpID, e.registration_link as link,
                 COALESCE(a.MembersCount, 0) as Attendance,
-                CASE WHEN COALESCE(g.memberCount, 0) > 0 THEN ROUND(COALESCE(a.MembersCount, 0) * 100.0 / g.memberCount, 2) ELSE 0 END as AttendancePercent
+                CASE WHEN COALESCE(g.memberCount, 0) > 0 THEN ROUND(COALESCE(a.MembersCount, 0) * 100.0 / g.memberCount, 2) ELSE 0 END as AttendancePercent,
+                (SELECT COUNT(*) FROM event_responses r WHERE r.EventId = e.pk_event_master_id AND r.JoiningStatus='Going') as goingCount,
+                (SELECT COUNT(*) FROM event_responses r WHERE r.EventId = e.pk_event_master_id AND r.JoiningStatus='Maybe') as maybeCount,
+                (SELECT COUNT(*) FROM event_responses r WHERE r.EventId = e.pk_event_master_id AND r.JoiningStatus='NotGoing') as notgoingCount,
+                (SELECT COUNT(*) FROM event_responses r WHERE r.EventId = e.pk_event_master_id) as totalCount,
+                (SELECT r.JoiningStatus FROM event_responses r WHERE r.EventId = e.pk_event_master_id AND r.MemberProfileId=@profileId LIMIT 1) as myResponse
                 FROM event_master e
                 LEFT JOIN attentance_master a ON a.FK_eventID = e.pk_event_master_id AND (a.isdeleted=0 OR a.isdeleted IS NULL)
                 LEFT JOIN group_master g ON e.fk_group_master_id = g.pk_group_master_id
                 WHERE e.pk_event_master_id = @id AND (e.isdeleted=0 OR e.isdeleted IS NULL)";
             cmd.Parameters.AddWithValue("@id", eventId);
+            cmd.Parameters.AddWithValue("@profileId", int.TryParse(request.groupProfileID, out var pdid) ? pdid : 0);
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
@@ -157,6 +176,11 @@ public class EventService : IEventService
                     link = reader["link"]?.ToString(),
                     Attendance = reader["Attendance"]?.ToString(),
                     AttendancePercent = reader["AttendancePercent"]?.ToString(),
+                    goingCount = reader["goingCount"]?.ToString(),
+                    maybeCount = reader["maybeCount"]?.ToString(),
+                    notgoingCount = reader["notgoingCount"]?.ToString(),
+                    totalCount = reader["totalCount"]?.ToString(),
+                    myResponse = reader["myResponse"] is DBNull ? null : reader["myResponse"]?.ToString(),
                 };
                 await reader.CloseAsync();
 
